@@ -3,7 +3,7 @@
 # View logs in real time Plugins
 # Syntax: log <domain> <option>
 # Options: -wp, -error, -mail, -php o -fpm, -mysql, -access-log, -le, -ssh, -auth, -syslog
-# Arguments: -lines, -display, -enable, -disable
+# Arguments: -lines, -display, -enable, -disable, -expire-logs
 # Notes: If no domain or option is entered, access logs are displayed.
 
 source /opt/webinoly/lib/general
@@ -175,12 +175,23 @@ elif [[ -n $mysql ]]; then
 			cnf_delete skip-log-bin
 			cnf_write log_bin /var/log/mysql/mariadb-bin
 			cnf_write log_bin_index /var/log/mysql/mariadb-bin.index
+			
+			if [[ -n $expire_logs || -n $(conf_read mysql-log-binary-expire) ]]; then
+				[[ -n $expire_logs ]] && conf_write mysql-log-binary-expire $expire_logs
+				cnf_write binlog_expire_logs_seconds $(check_var mysql-log-binary-expire)
+				# Fix: Expire logs dont work in master-master replication - https://jira.mariadb.org/browse/MDEV-31404
+				cnf_write slave_connections_needed_for_purge 0
+				echo "${gre}${dim}MySQL/MariaDB Binary expire logs value was successfully set! ($(check_var mysql-log-binary-expire))${end}"
+			fi
+			
 			conf_write mysql-log-binary true
 			sudo systemctl restart mysql
 			echo "${gre}MySQL/MariaDB Binary log was successfully enabled!${end}"
 		elif [[ -n $disable ]]; then
 			cnf_delete log_bin
 			cnf_delete log_bin_index
+			cnf_delete binlog_expire_logs_seconds
+			cnf_delete slave_connections_needed_for_purge
 			cnf_write skip-log-bin
 			conf_write mysql-log-binary false
 			sudo systemctl restart mysql

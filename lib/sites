@@ -1164,7 +1164,7 @@ location $sign$from {
 
 
 php_subfolder() {
-	[[ -n $wp || $(conf_read php-info) == "false" ]] && local file="php.conf" || local file="phpx.conf"
+	[[ -n $wp || $(conf_read php-info) == "true" ]] && local file="phpx.conf" || local file="php.conf"
 	
 	sudo sed -i "/# WebinolyCustom$/a \	include apps.d/$domain$subname-$file;" /etc/nginx/sites-available/$domain
 	sudo sed -i '/index /c \	index index.php index.html index.htm;' /etc/nginx/sites-available/$domain
@@ -1326,8 +1326,8 @@ parked_domain() {
 	# In case of WP cache, should be disabled in the new parked conf
 	sudo sed -i "/include common\/wpfc.conf;/c \	include common\/php.conf;" /etc/nginx/sites-available/$domain
 	sudo sed -i "/include apps.d\/${domain}-wpcache.conf;/c \	include common\/php.conf;" /etc/nginx/sites-available/$domain
-	[[ $(conf_read php-info) != "false" ]] && sudo sed -i "/include apps.d\/${domain}-phpcache.conf;/c \	include common\/phpx.conf;" /etc/nginx/sites-available/$domain
-	[[ $(conf_read php-info) == "false" ]] && sudo sed -i "/include apps.d\/${domain}-phpcache.conf;/c \	include common\/php.conf;" /etc/nginx/sites-available/$domain
+	[[ $(conf_read php-info) == "true" ]] && sudo sed -i "/include apps.d\/${domain}-phpcache.conf;/c \	include common\/phpx.conf;" /etc/nginx/sites-available/$domain
+	[[ $(conf_read php-info) != "true" ]] && sudo sed -i "/include apps.d\/${domain}-phpcache.conf;/c \	include common\/php.conf;" /etc/nginx/sites-available/$domain
 	
 	cusconl=$( grep -o "include /var/www/$domain/\*-nginx.conf;" /etc/nginx/sites-available/$domain | sed "s/$domain/$parked/" )
 	sed -i "/include \/var\/www\/$domain\/\*-nginx.conf;/c \	${cusconl}" /etc/nginx/sites-available/$domain
@@ -1556,7 +1556,7 @@ wp_cache() {
 	if [[ $cache == "off" ]]; then
 		api-events_update si9
 		if [[ $(is_cache $domain $subfolder) == "custom" ]]; then
-			if [[ $(conf_read php-info) != "false" && $(is_wp $domain $subfolder) != "true" ]]; then
+			if [[ $(conf_read php-info) == "true" && $(is_wp $domain $subfolder) != "true" ]]; then
 				if [[ -z $subfolder ]]; then
 					sudo sed -i "/apps.d\/$domain$subname-.*cache.conf;/c \	include common/phpx.conf;" /etc/nginx/sites-available/$domain
 				elif [[ -n $subfolder && -f /etc/nginx/apps.d/$domain$subname-phpx.conf ]]; then
@@ -1727,7 +1727,7 @@ wp_cache() {
 				
 				echo -e "# Webinoly Custom FastCGI Cache File \n" >> /etc/nginx/apps.d/$domain$subname-${fn}.conf
 				
-				if [[ $fn == "phpcache" && $(conf_read php-info) != "false" ]]; then
+				if [[ $fn == "phpcache" && $(conf_read php-info) == "true" ]]; then
 					sudo cat /etc/nginx/common/phpx.conf >> /etc/nginx/apps.d/$domain$subname-${fn}.conf
 				else
 					sudo cat /etc/nginx/common/php.conf >> /etc/nginx/apps.d/$domain$subname-${fn}.conf

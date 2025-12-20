@@ -4,8 +4,8 @@
 # Prevent 'tput' errors when running from Cron
 [[ -z $TERM || $TERM == "unknown" || $TERM == "dumb" ]] && export TERM=dumb
 
-readonly app_version="1.19.7"
-readonly svr_version="1.11"
+readonly app_version="1.20.0"
+readonly svr_version="1.12"
 readonly os_ubuntu_supported=(focal jammy noble) # https://ubuntu.com/about/release-cycle
 readonly php_supported=(7.4 8.0 8.1 8.2 8.3 8.4 8.5) # https://www.php.net/supported-versions.php
 readonly php_default="8.4"
@@ -1645,6 +1645,10 @@ check_var() {
 	# PHP Fopen Wrappers
 	elif [[ $1 == "php-allow-url-fopen" ]]; then
 		[[ $(conf_read php-allow-url-fopen) == "true" ]] && local out="On" || local out="Off"
+		
+	# PHP Sessions Cookie Samesite
+	elif [[ $1 == "php-session-cookie-samesite" ]]; then
+		[[ $(conf_read php-session-cookie-samesite) =~ ^(Lax|Strict)$ ]] && local out=$(conf_read php-session-cookie-samesite) || local out="Lax"
 	
 	# Redis Memory
 	elif [[ $1 == "redis-max-mem" ]]; then
@@ -1677,7 +1681,7 @@ check_var() {
 	# Locations: Deny Extensions
 	elif [[ $1 == "locations-deny-extensions" ]]; then
 		if [[ -z $(conf_read locations-deny-extensions) ]]; then
-			local out="7z|ai|asc|asp|aspx|ba|bak|bash|bat|bin|bz2|c|cco|cfg|cgi|class|com|conf|cpp|crt|cs|dat|db|dbf|deb|der|dll|dmg|dmp|dump|ear|eps|exe|git|gz|h|hg|hqx|img|ini|iso|jad|jar|jardiff|jnlp|jsp|kar|kml|kmz|log|m3u8|mdb|mml|msi|msm|msp|odp|ods|odt|old|orig|original|out|pdb|pem|php#|php_bak|php~|pkg|pl|pm|ppk|prc|ps|py|rar|rdf|rpm|run|save|sea|sh|sit|sql|srv|svn|swo|swp|sys|tar|taz|tcl|tgz|tk|tmp|tpl|tsl|tz|vb|yml|war|wsf|xspf|z|zip"
+			local out="7z|ai|alfa|asc|asp|aspx|ba|backup|bak|bash|bat|bin|bkp|bz2|c|cco|cfg|cgi|class|com|conf|cpp|crt|cs|dat|db|dbf|deb|der|dll|dmg|dmp|dump|ear|env|eps|exe|git|gz|h|hg|hqx|img|ini|iso|jad|jar|jardiff|jnlp|jsp|kar|kml|kmz|log|m3u8|mdb|mml|msi|msm|msp|odp|ods|odt|old|orig|original|out|pdb|pem|phar|php#|php_bak|php~|pkg|pl|pm|ppk|prc|ps|py|rar|rdf|rpm|run|save|sea|sh|sit|sql|srv|suspected|svn|swo|swp|sys|tar|taz|tcl|tgz|tk|tmp|tpl|tsl|tz|vb|yml|war|wsf|xspf|z|zip"
 		else
 			local out=$(conf_read locations-deny-extensions)
 		fi
@@ -1723,6 +1727,10 @@ check_var() {
 		[[ $(conf_read nginx-log-format) == "extended" ]] && local out="we_log_ext"
 		[[ $(conf_read nginx-log-format) == "custom" ]] && local out="we_log_custom"
 		
+	# MySQL 
+	elif [[ $1 == "mysql-log-binary-expire" ]]; then
+		[[ -n $(conf_read mysql-log-binary-expire) && $(conf_read mysql-log-binary-expire) =~ ^[0-9]+$ && $(conf_read mysql-log-binary-expire) -le 8553600 ]] && local out=$(conf_read mysql-log-binary-expire) || local out=864000
+	
 	else
 		local out="false"
 	fi

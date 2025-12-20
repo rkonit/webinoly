@@ -139,7 +139,7 @@ if [[ -n $mysql || ( -n $php && -n $domain ) ]]; then
 			else
 				createsite
 			fi
-			[[ $(conf_read php-info) != "false" ]] && sudo sed -i '/common\/php.conf/c \	include common/phpx.conf;' /etc/nginx/sites-available/$domain
+			[[ $(conf_read php-info) == "true" ]] && sudo sed -i '/common\/php.conf/c \	include common/phpx.conf;' /etc/nginx/sites-available/$domain
 		fi
 	fi
 	

@@ -189,6 +189,8 @@ if [[ -n $purge && ( -n $html || -n $nginx ) ]]; then
 			conf_write nginx purged
 			conf_write nginx-optim purged
 			conf_delete server-version
+			init_nginx
+			
 			echo ""
 			echo "${gre}Nginx has been deleted successfully! ${end}"
 			echo ""
@@ -264,6 +266,7 @@ elif [[ -n $purge && -n $php ]]; then
 			
 			conf_write php purged
 			conf_write php-optim purged
+			init_php
 			
 			echo ""
 			echo "${gre}PHP has been deleted successfully! ${end}"
@@ -336,6 +339,7 @@ elif [[ -n $purge && -n $mysql ]]; then
 			purge_autoremove="true"
 			conf_write mysql purged
 			conf_write mysql-optim purged
+			init_mysql
 			
 			echo ""
 			echo "${gre}MySQL/MariaDB has been deleted successfully! ${end}"
