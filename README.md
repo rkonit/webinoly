@@ -28,7 +28,7 @@ Install a complete LEMP stack or individual packages tailored to your needs.
 - **WordPress Tools:** Subfolder install, external database, multisite, domain mapping
 - **Reverse Proxy:** Compatible with Java, Node, React, Vue, etc.
 - **Backup & Migration:** Full site/server cloning and transfer tools
-- **Monitoring:** Real-time log viewer, Datadog integration
+- **Monitoring:** Real-time log viewer
 - **Extras:** Redirection manager, SMTP support, custom headers
 
 Get an A+ grade on [Qualys (SSL Labs) Test](https://www.ssllabs.com/ssltest/).

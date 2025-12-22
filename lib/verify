@@ -31,10 +31,6 @@ if [[ ! -f /opt/webinoly/lib/bkp ]]; then
 	echo "- [ERROR] File: /opt/webinoly/lib/bkp not found!"
 	local ver_one_err="1"
 fi
-if [[ ! -f /opt/webinoly/lib/datadog ]]; then
-	echo "- [ERROR] File: /opt/webinoly/lib/datadog not found!"
-	local ver_one_err="1"
-fi
 if [[ ! -f /opt/webinoly/lib/ex-ssl-authentication ]]; then
 	echo "- [ERROR] File: /opt/webinoly/lib/ex-ssl-authentication not found!"
 	local ver_one_err="1"

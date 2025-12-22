@@ -16,7 +16,6 @@ readonly mysql_default="8.4"
 readonly tools_port_default="22222"
 
 # Additional Tools
-readonly datadog_agent_ver="7"
 readonly duplicity_version="2.1.4"
 
 # echo colors
@@ -1242,25 +1241,6 @@ is_empty_root_site() {
 	else
 		echo "false"
 	fi
-}
-
-
-is_dd_log() {
-	if [[ $1 == "nginx" ]]; then
-		local ddpath="/etc/datadog-agent/conf.d/nginx.d/conf.yaml"
-	elif [[ $1 == "fpm" ]]; then
-		local ddpath="/etc/datadog-agent/conf.d/php_fpm.d/conf.yaml"
-	elif [[ $1 == "mysql" ]]; then
-		local ddpath="/etc/datadog-agent/conf.d/mysql.d/conf.yaml"
-	elif [[ $1 == "redis" ]]; then
-		local ddpath="/etc/datadog-agent/conf.d/redisdb.d/conf.yaml"
-	elif [[ $1 == "global" ]]; then
-		[[ -f /etc/datadog-agent/datadog.yaml && -n $(grep -F "WebinolyLogsStart" /etc/datadog-agent/datadog.yaml) ]] && local global="true"
-	else
-		local ddpath=""
-	fi
-	
-	[[ -n $global || ( -n $ddpath && -f $ddpath && -n $(grep -F "WebinolyDatadogLogsStart" $ddpath)) ]] && echo "true" || echo "false"
 }
 
 
