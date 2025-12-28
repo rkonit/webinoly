@@ -192,10 +192,6 @@ if [[ ! -f /opt/webinoly/templates/general/nginx-blackhole ]]; then
 	echo "- [ERROR] File: /opt/webinoly/templates/general/nginx-blackhole not found!"
 	local ver_one_err="1"
 fi
-if [[ ! -f /opt/webinoly/templates/general/sysctl ]]; then
-	echo "- [ERROR] File: /opt/webinoly/templates/general/sysctl not found!"
-	local ver_one_err="1"
-fi
 if [[ ! -f /opt/webinoly/templates/general/tools-site-blackhole ]]; then
 	echo "- [ERROR] File: /opt/webinoly/templates/general/tools-site-blackhole not found!"
 	local ver_one_err="1"

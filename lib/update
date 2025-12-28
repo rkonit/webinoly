@@ -395,6 +395,11 @@ oneten_to_oneeleven() {
 }
 
 
+# v1.20.0
+oneeleven_to_onetwelve() {
+	sudo webinoly -server-reset=confile
+}
+
 
 [[ $(version $oldver) -lt $(version "1.1") ]] && onezero_to_oneone
 [[ $(version $oldver) -lt $(version "1.2") ]] && oneone_to_onetwo
@@ -407,6 +412,7 @@ oneten_to_oneeleven() {
 [[ $(version $oldver) -lt $(version "1.9") ]] && oneight_to_onenine
 [[ $(version $oldver) -lt $(version "1.10") ]] && onenine_to_oneten
 [[ $(version $oldver) -lt $(version "1.11") ]] && oneten_to_oneeleven
+[[ $(version $oldver) -lt $(version "1.12") ]] && oneeleven_to_onetwelve
 
 
 # Update PIP packages!

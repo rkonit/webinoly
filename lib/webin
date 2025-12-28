@@ -581,6 +581,24 @@ server_reset() {
 		err_cont=true
 	fi
 	
+	if [[ $server_reset == "confile" ]]; then
+		if [[ -f /opt/webinoly/webinoly.conf ]]; then
+			local oldfilename="webinoly.conf_$(date +%F)-$(date +%T).old"
+			mv /opt/webinoly/webinoly.conf /opt/webinoly/${oldfilename}
+			IFS=$'\n' # FOR loop takes whitespace as a delimiter, so IFS overwrite this.
+			for i in $(grep -E "^([a-z\-]+)\:.*$" /opt/webinoly/${oldfilename})
+			do
+				conf_write $(echo $i | cut -d':' -f 1 -s) $(echo $i | cut -d':' -f 2- -s)
+			done
+			
+			echo "${gre}Webinoly configuration file successfully regenerated!${end}"
+			nginx_not="true" # Nginx-Reload not-needed.
+		else
+			echo "${red}[ERROR] Webinoly configuration file not found!${end}"
+			err_cont=true
+		fi
+	fi
+	
 	# Display message just to show we are alive.
 	if [[ $server_reset == "all" && $(conf_read php-optim) != "true" && $(conf_read nginx-optim) != "true" ]]; then
 		echo "${blu}Nothing to do here! ${dim}(NGINX, PHP or MySQL/MariaDB are not installed yet)${end}"
