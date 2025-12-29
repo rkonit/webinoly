@@ -74,7 +74,7 @@ linux_optim() {
 
     # Shared memory (generic correction; not DB2 IPC). shmmax ~80% RAM; shmall = shmmax/pagesize
     pagesize=$(getconf PAGE_SIZE)
-    shmmax=$(($ram*1024*1024*1024*80/100))
+    [[ $ram -gt 1 ]] && shmmax=$(($ram*1024*1024*1024*80/100)) || shmmax=$((1*1024*1024*1024*80/100))
     shmall=$(($shmmax/$pagesize))
 
     # SysV IPC — scale safely by RAM and cap at 32768 (kept for broad compatibility)
@@ -107,7 +107,7 @@ linux_optim() {
 	fi
 
     # System-wide file max (scaled; avoid absurd maxima)
-    fs_file_max=$((($ram * 1024 * 1024) / 4 ))   # ~1 FD per 4 KB RAM
+    [[ $ram -gt 1 ]] && fs_file_max=$((($ram * 1024 * 1024) / 4 )) || fs_file_max=$(((1 * 1024 * 1024) / 4 ))   # ~1 FD per 4 KB RAM
 	[[ $fs_file_max -gt 1048576 ]] && fs_nr_open=1048576 || fs_nr_open=$fs_file_max # file_max is global, nr_open is per process and capped at 1M
 	
 	# Max processes capped to 4M and 65k for nano/micro servers
