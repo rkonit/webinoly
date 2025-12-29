@@ -176,13 +176,11 @@ elif [[ -n $mysql ]]; then
 			cnf_write log_bin /var/log/mysql/mariadb-bin
 			cnf_write log_bin_index /var/log/mysql/mariadb-bin.index
 			
-			if [[ -n $expire_logs || -n $(conf_read mysql-log-binary-expire) ]]; then
-				[[ -n $expire_logs ]] && conf_write mysql-log-binary-expire $expire_logs
-				cnf_write binlog_expire_logs_seconds $(check_var mysql-log-binary-expire)
-				# Fix: Expire logs dont work in master-master replication - https://jira.mariadb.org/browse/MDEV-31404
-				cnf_write slave_connections_needed_for_purge 0
-				echo "${gre}${dim}MySQL/MariaDB Binary expire logs value was successfully set! ($(check_var mysql-log-binary-expire))${end}"
-			fi
+			[[ -n $expire_logs ]] && conf_write mysql-log-binary-expire $expire_logs
+			cnf_write binlog_expire_logs_seconds $(check_var mysql-log-binary-expire)
+			# Fix: Expire logs dont work in master-master replication - https://jira.mariadb.org/browse/MDEV-31404
+			cnf_write slave_connections_needed_for_purge 0
+			echo "${gre}${dim}MySQL/MariaDB Binary expire logs value was successfully set! ($(check_var mysql-log-binary-expire))${end}"
 			
 			conf_write mysql-log-binary true
 			sudo systemctl restart mysql
