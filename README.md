@@ -69,5 +69,5 @@ If you find Webinoly useful, consider supporting the project via:
 
 ### Community
 - [Discussions/Issues](https://webinoly.com/premium/)
-- Follow us on [Twitter](https://x.com/Webinoly) and [Facebook](https://www.facebook.com/Webinoly/)
+- Follow us on [X/Twitter](https://x.com/Webinoly) or [Mastodon](https://fosstodon.org/@webinoly)
 - Subscribe to our [Newsletter](https://webinoly.com/newsletter/)
