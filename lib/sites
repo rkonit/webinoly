@@ -768,36 +768,39 @@ create_empty_site() {
 createsite() {
 	api-events_update si1
 	
-	# First check if valid TLD
-	[[ -z $tld ]] && echo "${dim}[WARNING] Domain name is not a valid TLD (Top Level Domain).${end}"
-	
 	# Check domain and then prevent reserved characters for file names.
 	is_url $domain -split
 	if [[ -n $url_scheme || -n $url_path ]]; then
 		echo "${red}[ERROR] Domain names should not contain scheme or path. ${dim}(Use example.com instead of https://example.com/path) ${end}"
 		exit 1
-	fi
-	if [[ $(is_domain $domain_name) != "true" ]]; then
+	
+	elif [[ $url_type == "ip" ]]; then
+		echo "${red}[ERROR] Please, use a regular domain name. ${dim}(example.com)${end}"
+		echo "${red}${dim}If you want to use an IP address you can create a site and then set it as default site.${end}"
+		exit 1
+		
+	elif [[ $(is_domain $domain_name) != "true" || $url_type != "true" ]]; then
 		echo "${red}[ERROR] Domain names can only contain letters, numbers or a hyphen; can not start or end with a hyphen or period or having two periods together. The maximum length of each label is 63 characters, and a full domain name can have a maximum of 253 characters.${end}"
 		exit 1
-	fi
 	
 	# Temporal check: sites with custom port not allowed, only for admin tools site.
-	if [[ -n $url_port && $domain != $ADMIN_TOOLS_SITE ]]; then
+	elif [[ -n $url_port && $domain != $ADMIN_TOOLS_SITE ]]; then
 		echo "${red}[ERROR] Sites with custom port are not allowed! ${end}"
 		exit 1
-	fi
 	
 	# Check for reserved domain names
-	if [[ $domain == "default" ]]; then
+	elif [[ $domain == "default" ]]; then
 		echo "${red}[ERROR] Domain name reserved!${end}"
 		exit 1
-	fi
 	
 	# Check for duplicate sites
-	if [[ -f /etc/nginx/sites-available/$domain ]]; then
+	elif [[ -f /etc/nginx/sites-available/$domain ]]; then
 		echo "${red}[ERROR] Can not create site${blu} $domain ${red}because already exists!${end}"
 		exit 1
+	
+	# Check if valid TLD
+	elif [[ -z $tld ]]; then
+		echo "${dim}[WARNING] Domain name is not a valid TLD (Top Level Domain).${end}"
 	fi
 	
 	sudo cp /opt/webinoly/templates/template-site-php /etc/nginx/sites-available/$domain
