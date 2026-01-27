@@ -550,7 +550,22 @@ server_reset() {
 			# Added in v1.11.0, will fail if stack was built before:
 			[[ -f /opt/webinoly/templates/source/php-fpm.conf ]] && sudo cat /opt/webinoly/templates/source/php-fpm.conf > /etc/php/$(conf_read php-ver)/fpm/php-fpm.conf
 			sudo rm -rf /etc/php/$(conf_read php-ver)/fpm/pool.d/debug.conf
+			
 			php_optim
+			
+			if [[ $(conf_read php-tool-redis) == "true" ]]; then
+				sudo systemctl restart redis-server
+				echo "${gre}${dim}Redis service restarted!${end}"
+			fi
+			if [[ $(conf_read php-tool-memcached) == "true" ]]; then
+				sudo systemctl restart memcached
+				echo "${gre}${dim}Memcached service restarted!${end}"
+			fi
+			if [[ $(conf_read php-tool-postfix) == "true" ]]; then
+				sudo systemctl restart postfix
+				echo "${gre}${dim}Postfix service restarted!${end}"
+			fi
+			
 			echo "${gre}PHP settings has been updated successfully!${end}"
 		else
 			echo "${red}[ERROR] PHP could not been updated, source files not found!${end}"
