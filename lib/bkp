@@ -606,15 +606,15 @@ check_exported_conf() {
 		if tar -tvf $file --absolute-names | grep -oq "$HOME/.aws/credentials"; then
 			tar -C / -xf $file $HOME/.aws/credentials --absolute-names
 		fi
-		if [[ $(conf_read mysql) == "true" ]]; then
-			if tar -tvf $file --absolute-names | grep -oq "$MYSQL_CONF_PATH/${MYSQL_CONF_PREF}-webinoly-login.cnf"; then
-				tar -C / -xf $file $MYSQL_CONF_PATH/${MYSQL_CONF_PREF}-webinoly-login.cnf --absolute-names
-			fi
-			if tar -tvf $file --absolute-names | grep -oq "$MYSQL_CONF_PATH/${MYSQL_CONF_PREF}-webinoly.cnf"; then
-				tar -C / -xf $file $MYSQL_CONF_PATH/${MYSQL_CONF_PREF}-webinoly.cnf --absolute-names
-				sudo systemctl restart mysql
-			fi
-		fi
+		#if [[ $(conf_read mysql) == "true" ]]; then
+		#	if tar -tvf $file --absolute-names | grep -oq "$MYSQL_CONF_PATH/${MYSQL_CONF_PREF}-webinoly-login.cnf"; then
+		#		tar -C / -xf $file $MYSQL_CONF_PATH/${MYSQL_CONF_PREF}-webinoly-login.cnf --absolute-names
+		#	fi
+		#	if tar -tvf $file --absolute-names | grep -oq "$MYSQL_CONF_PATH/${MYSQL_CONF_PREF}-webinoly.cnf"; then
+		#		tar -C / -xf $file $MYSQL_CONF_PATH/${MYSQL_CONF_PREF}-webinoly.cnf --absolute-names
+		#		sudo systemctl restart mysql
+		#	fi
+		#fi
 	fi
 }
 
@@ -1025,7 +1025,7 @@ import_server() {
 	fi
 
 	if [[ $import =~ ^(true|sites|full)$ ]]; then
-		sudo tar -Pxf $file
+		sudo tar -Pxf $file --exclude=*-webinoly-login.cnf --exclude=*-webinoly.cnf
 		
 		# Check imported configuration file to prevent issues
 		[[ ! -f /opt/webinoly/webinoly.conf.exported ]] && echo "${red}[ERROR] Exported Configuration file not found!${end}"
