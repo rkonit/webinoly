@@ -1638,9 +1638,9 @@ check_var() {
 	elif [[ $1 == "max-mb-uploads" ]]; then
 		[[ -n $(conf_read max-mb-uploads) && $(conf_read max-mb-uploads) =~ ^[0-9]+$ && $(conf_read max-mb-uploads) -gt 0 ]] && local out=$(conf_read max-mb-uploads) || local out=100	
 	
-	# FastCGI Cache size
+	# FastCGI Cache size (/run folder)
 	elif [[ $1 == "run-folder-size" ]]; then
-		[[ -n $(conf_read run-folder-size) && $(conf_read run-folder-size) =~ ^[0-9]+$ && $(conf_read run-folder-size) -gt 10 && $(conf_read run-folder-size) -le "70" ]] && local out=$(conf_read run-folder-size) || local out=25
+		[[ -n $(conf_read run-folder-size) && $(conf_read run-folder-size) =~ ^[0-9]+$ && $(conf_read run-folder-size) -gt 10 && $(conf_read run-folder-size) -le "70" ]] && local out=$(conf_read run-folder-size) || local out=""
 	
 	# FastCGI Cache: Query Strings
 	elif [[ $1 == "wpcache-query-strings" ]]; then

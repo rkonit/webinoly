@@ -39,9 +39,9 @@
 
 # Percentage of RAM assigned to /run folder
 # Values: numeric int (10 < % < 70)
-# Default: 25
+# Default: (Not-Changed/system default)
 ###########################
-#run-folder-size:25
+#run-folder-size:15
 
 
 # Size of linux swap file
@@ -548,6 +548,7 @@
 # MySQL/MariaDB Public/External Access
 # Values: boolean (true/false)
 # Default: false
+# Note: A special value can also be used to set the bind parameter (*, ::, or an IPv4/6 address). Example: sudo webinoly -mysql-public-access=2.2.2.2
 # Same as: sudo webinoly -mysql-public-access=on
 #mysql-public-access:false
 

@@ -51,25 +51,25 @@ linux_optim() {
         min_free_kbytes=$(($ramb*20))         # ~2% of RAM in MB (value in kB expected by kernel)
         dirty_ratio=5
         dirty_bg_ratio=2
-        dirty_bytes=5505024000
-        dirty_bg_bytes=917504000
-        dirty_writeback_cs=100
+		vfs_cache_pressure=100
     elif [[ $ram -gt 2 ]]; then
         swappiness=5
         min_free_kbytes=$(($ramb*30))         # ~3% of RAM
         dirty_ratio=10
         dirty_bg_ratio=5
-        dirty_bytes=0
-        dirty_bg_bytes=0
-        dirty_writeback_cs=0
-    else
+		vfs_cache_pressure=100
+    elif [[ $ram -gt 1 ]]; then
         swappiness=10
-        min_free_kbytes=65535                  # ~64MB default safety
+        min_free_kbytes=65535                  # ~64MB
         dirty_ratio=15
         dirty_bg_ratio=5
-        dirty_bytes=0
-        dirty_bg_bytes=0
-        dirty_writeback_cs=0
+		vfs_cache_pressure=200
+	else
+        swappiness=20
+        min_free_kbytes=16384                  # ~16MB default safety
+        dirty_ratio=15
+        dirty_bg_ratio=5
+		vfs_cache_pressure=200
     fi
 
     # Shared memory (generic correction; not DB2 IPC). shmmax ~80% RAM; shmall = shmmax/pagesize
@@ -100,21 +100,39 @@ linux_optim() {
 		rmem_max=16777216      # 16MB
 		wmem_max=16777216
 		vm_max_map_count=524288
-	else
+	elif [[ $ram -gt 1 ]]; then
 		rmem_max=8388608       # 8MB
 		wmem_max=8388608
 		vm_max_map_count=262144
+	else
+        rmem_max=4194304       # 4MB
+        wmem_max=4194304
+        vm_max_map_count=262144
 	fi
 
+	#### IMPORTANT: The next 4 values, never less than 1M and 256k (kernel_pid_max)
+	#### It can break your server after reboot/stop...
+	
+	# Cloud Philosophy: The only real limit should be physical RAM.
+	# We set high static values to avoid artificial "paper ceilings".
+	# Legacy practice of calculating limits based on RAM is obsolete and risky.
+	# Security Note: In a fork-bomb scenario, we rely on the OOM Killer to intervene 
+	# rather than hitting an arbitrary file descriptor limit.
+	# fs.file-max = 9223372036854775807
+	# fs.nr_open = 2147483584
+	# fs.aio-max-nr = 18446744073709551615
+	# kernel.pid_max = 4194304
+	
     # System-wide file max (scaled; avoid absurd maxima)
     [[ $ram -gt 2 ]] && fs_file_max=$((($ram * 1024 * 1024) / 2 )) || fs_file_max=1048576
-
+	[[ $fd_per_process -gt 1048576 ]] && fs_nr_open=$(($fd_per_process + 100000)) || fs_nr_open=1048576
+	
 	# Huge databases can take advantage of AIO
 	[[ $cores -gt 2 && $ram -gt 8 ]] && fs_aio_max_nr=4194304 || fs_aio_max_nr=1048576
 	
-	# Max processes capped to 4M and 256k for nano/micro servers
-	[[ $cores -gt 1 && $ram -gt 3 ]] && kernel_pid_max=$((65535 * $ram)) || kernel_pid_max=262144
-	[[ $kernel_pid_max -gt 4194304 ]] && kernel_pid_max=4194304
+	# Max processes capped to 4M
+	[[ $cores -gt 1 && $ram -gt 3 ]] && kernel_pid_max=4194304 || kernel_pid_max=1048576
+	
 
     # Compose sysctl file
     sudo tee /etc/sysctl.d/90-webinoly.conf >/dev/null <<EOF
@@ -130,7 +148,7 @@ linux_optim() {
 ### GENERAL OPTIONS ###
 #######################
 fs.file-max = ${fs_file_max}
-fs.nr_open = 1048576
+fs.nr_open = ${fs_nr_open}
 fs.aio-max-nr = ${fs_aio_max_nr}
 kernel.pid_max = ${kernel_pid_max}
 
@@ -149,13 +167,10 @@ vm.dirty_background_ratio = ${dirty_bg_ratio}
 vm.dirty_expire_centisecs = 1400
 vm.min_free_kbytes = ${min_free_kbytes}
 vm.zone_reclaim_mode = 0
-vm.vfs_cache_pressure = 100
+vm.vfs_cache_pressure = ${vfs_cache_pressure}
 vm.max_map_count = ${vm_max_map_count}
 kernel.shmmax = ${shmmax}
 kernel.shmall = ${shmall}
-$( [[ $dirty_bytes -gt 0 ]] && echo "vm.dirty_bytes = ${dirty_bytes}" )
-$( [[ $dirty_bg_bytes -gt 0 ]] && echo "vm.dirty_background_bytes = ${dirty_bg_bytes}" )
-$( [[ $dirty_writeback_cs -gt 0 ]] && echo "vm.dirty_writeback_centisecs = ${dirty_writeback_cs}" )
 
 ###########################
 ### NETWORK PERFORMANCE ###
@@ -202,8 +217,8 @@ EOF
 # WebinolyStart - Don't delete
 root    -   nofile  ${rootfd}
 *       -   nofile  ${fd_per_process}
-mysql   soft    nofile  65535
-mysql   hard    nofile  65535
+mysql   soft    nofile  ${fd_per_process}
+mysql   hard    nofile  ${fd_per_process}
 # WebinolyEnd
 EOF
 
@@ -225,10 +240,12 @@ EOF
     sudo systemctl start webinoly-disable-thp >/dev/null 2>&1
     sudo systemctl enable webinoly-disable-thp >/dev/null 2>&1
 
-    # Increase /run tmpfs size
-    echo "tmpfs   /run    tmpfs   nodev,nosuid,size=$(check_var run-folder-size)%,mode=755   0   0" | sudo tee -a /etc/fstab >/dev/null
-    sudo mount -o remount tmpfs >/dev/null 2>&1
-
+    # Increase /run tmpfs size (disabled by default)
+	if [[ -n $(check_var run-folder-size) ]]; then
+		echo "tmpfs   /run    tmpfs   nodev,nosuid,size=$(check_var run-folder-size)%,mode=755   0   0" | sudo tee -a /etc/fstab >/dev/null
+		sudo mount -o remount tmpfs >/dev/null 2>&1
+	fi
+	
     swap_create
     [[ -n $(conf_read timezone) ]] && set_timezone
 

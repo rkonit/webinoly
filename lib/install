@@ -258,7 +258,8 @@ fastcgi_param  HTTP_ACCEPT_ENCODING "";
 # WebinolyCustomEnd' >> /etc/nginx/fastcgi_params
 	
 	# FastCGI Cache size: We take 90% of /run folder size! https://github.com/QROkes/webinoly/issues/19
-	sudo sed -i "/fastcgi_cache_path/c \fastcgi_cache_path /run/nginx-cache levels=1:2 keys_zone=WORDPRESS:50m max_size=$(((9*$ramb*$(check_var run-folder-size))/1000))m inactive=7d;" /etc/nginx/conf.d/fastcgi.conf
+	[[ -n $(check_var run-folder-size) ]] && local runfoldersize=$(check_var run-folder-size) || local runfoldersize=10
+	sudo sed -i "/fastcgi_cache_path/c \fastcgi_cache_path /run/nginx-cache levels=1:2 keys_zone=WORDPRESS:50m max_size=$(((9*$ramb*$runfoldersize)/1000))m inactive=7d;" /etc/nginx/conf.d/fastcgi.conf
 	sudo sed -i "/fastcgi_read_timeout/c \fastcgi_read_timeout $(check_var php-max-time)s;" /etc/nginx/conf.d/fastcgi.conf
 	
 	# www-data sftp default uploads permissions 750 and 640, instead of 775 and 664.
