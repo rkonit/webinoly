@@ -861,9 +861,9 @@ createsite() {
 	fi
 
 	# Force redirection "root" is now enabled by default!
-	if [[ $subdomain != "true" && $force_redirect =~ ^(www|root|off)$ && -z $parked ]]; then
+	if [[ $subdomain != "true" && $force_redirect =~ ^(www|root|off)$ && -z $parked && -z $forward ]]; then
 		sudo site $domain -force-redirect=$force_redirect
-	elif [[ $subdomain != "true" && -z $parked ]]; then
+	elif [[ $subdomain != "true" && -z $parked && -z $forward ]]; then
 		sudo site $domain -force-redirect=root
 	fi
 
@@ -1379,10 +1379,12 @@ forward_domain() {
 	sudo rm -rf /var/www/$domain
 	sudo sed -i '/access_log/,/-nginx.conf;/{/.*/d}' /etc/nginx/sites-available/$domain
 	
+	[[ $http_code != 302 ]] && http_code=301
+	
 	if [[ $root == "on"  ]]; then
-		sudo sed -i "/server_name /a \	return 301 $forward;" /etc/nginx/sites-available/$domain
+		sudo sed -i "/# WebinolyNginxServerStart/,/# WebinolyNginxServerEnd/s|server_name .*|&\n\treturn $http_code $forward;|" /etc/nginx/sites-available/$domain
 	else
-		sudo sed -i "/server_name /a \	return 301 $forward\$request_uri;" /etc/nginx/sites-available/$domain
+		sudo sed -i "/# WebinolyNginxServerStart/,/# WebinolyNginxServerEnd/s|server_name .*|&\n\treturn $http_code $forward\$request_uri;|" /etc/nginx/sites-available/$domain
 	fi
 	
 	echo "${blu}Every request to${end} $domain ${blu}will be redirected to ${end}$forward"
