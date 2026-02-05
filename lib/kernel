@@ -246,6 +246,11 @@ EOF
 		sudo mount -o remount tmpfs >/dev/null 2>&1
 	fi
 	
+	# Ubuntu Automatic Updates - disabled by default: https://documentation.ubuntu.com/server/how-to/software/automatic-updates/
+	if [[ $(conf_read auto-updates) != "true" && -f /etc/apt/apt.conf.d/20auto-upgrades ]]; then
+		sudo sed -i -e 's/^\(APT::Periodic::Update-Package-Lists\).*/\1 "0";/' -e 's/^\(APT::Periodic::Unattended-Upgrade\).*/\1 "0";/' /etc/apt/apt.conf.d/20auto-upgrades
+	fi
+	
     swap_create
     [[ -n $(conf_read timezone) ]] && set_timezone
 
@@ -284,6 +289,11 @@ linux_purge() {
             sudo systemctl disable webinoly-disable-thp > /dev/null 2>&1
             sudo rm /etc/systemd/system/webinoly-disable-thp.service
         fi
+		
+		# Ubuntu Automatic Updates
+		if [[ -f /etc/apt/apt.conf.d/20auto-upgrades ]]; then
+			sudo sed -i -e 's/^\(APT::Periodic::Update-Package-Lists\).*/\1 "1";/' -e 's/^\(APT::Periodic::Unattended-Upgrade\).*/\1 "1";/' /etc/apt/apt.conf.d/20auto-upgrades
+		fi
 
         # Remove swap if recalculation flag is set
         [[ $recalculate == "on" ]] && swap_delete

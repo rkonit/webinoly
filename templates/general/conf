@@ -37,9 +37,20 @@
 #kernel-optim:true
 
 
+# Automatic Updates
+# Values: boolean (true/false)
+# Default: false
+# Note: Ubuntu (by default) will apply some updates automatically, without user interaction.
+# Note: Webinoly disables this to avoid issues from unpredictable upgrades.
+# Note: Applied only when Kernel Optimization is enabled.
+###########################
+#auto-updates:false
+
+
 # Percentage of RAM assigned to /run folder
 # Values: numeric int (10 < % < 70)
 # Default: (Not-Changed/system default)
+# Note: Applied only when Kernel Optimization is enabled.
 ###########################
 #run-folder-size:15
 
@@ -48,6 +59,7 @@
 # Values: numeric int (GB)
 # Default: <variable> (calculated based on your server resources)
 # Note: (server-reset with 'recalculate' is needed)
+# Note: Applied only when Kernel Optimization is enabled.
 ###########################
 #swap-mem:1
 
