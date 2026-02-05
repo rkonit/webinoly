@@ -1063,7 +1063,7 @@ is_dedicated_proxy_domain() {
 
 is_forward() {
 	if [[ -f /etc/nginx/sites-available/$1 ]]; then
-		local index=$(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$1 | grep -F "index ")
+		local index=$(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$1 | grep -F "index index.")
 		local return=$(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$1 | grep -F "return 30")
 		[[ ! -d /var/www/$1 && -z $index && -n $return ]] && echo "true" || echo "false"
 	else

@@ -141,8 +141,8 @@ site_ssl_on() {
 		[[ ! -d /var/www/.webinoly ]] && mkdir -p /var/www/.webinoly
 		chmod 750 /var/www/.webinoly
 		
-		if ! sed -n '/# WebinolyNginxServerStart/,/# WebinolyNginxServerEnd/p' /etc/nginx/sites-available/$domain | grep -q 'location /.well-known/acme-challenge/ {root /var/www/.webinoly;}'; then
-			sed -i "/# WebinolyNginxServerStart/,/# WebinolyNginxServerEnd/{ /return 30/s|^.*return 30\(.*\)\$request_uri;.*$|\n\n	location /.well-known/acme-challenge/ {root /var/www/.webinoly;}\n	location / {return 30\1\$request_uri;}| }" /etc/nginx/sites-available/$domain
+		if ! sed -n '/# WebinolyNginxServerStart/,/# WebinolyNginxServerEnd/p' /etc/nginx/sites-available/$domain | grep -q 'location /.well-known/acme-challenge/ {root /var/www/.webinoly;'; then
+			sed -i "/# WebinolyNginxServerStart/,/# WebinolyNginxServerEnd/{ /return 30/s|^.*return 30\(.*\)\;$|\n\n	location /.well-known/acme-challenge/ {root /var/www/.webinoly;autoindex off;try_files \$uri =404;disable_symlinks on;limit_except GET {deny all;}}\n	location / {return 30\1\;}| }" /etc/nginx/sites-available/$domain
 		fi
 		
 		echo "${blu}Forwarded domain configuration!${end}"
