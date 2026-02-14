@@ -1,171 +1,8 @@
 #!/bin/bash
+
 source /opt/webinoly/lib/general
 source /opt/webinoly/lib/headers
-
-readonly cores=$(grep ^processor /proc/cpuinfo | wc -l)
-readonly swapm=$(($(grep SwapTotal /proc/meminfo | cut -f 2 -d ':' | tr -d ' ' | cut -f 1 -d 'k')/1024))
-readonly swap=$(($swapm/1000))
-readonly ramk=$(grep MemTotal /proc/meminfo | cut -f 2 -d ':' | tr -d ' ' | cut -f 1 -d 'k')
-readonly ramb=$(($ramk/1000))
-[[ $(($ramb%1000)) -gt 700 ]] && readonly ram=$((($ramb/1000)+1)) || readonly ram=$(($ramb/1000))
-[[ $(($ramb*30)) -lt 65535 ]] && readonly fd_per_process=65535 || readonly fd_per_process=$(($ramb*30)) # File descriptors per process 3%
-[[ $(($cores*1024)) -lt 65535 ]] && readonly somax=$(($cores*1024)) || readonly somax=65535
-
-# Validation
-[[ $cores =~ ^[0-9]+$ ]] || echo "${red}[ERROR] System info (cores) retrieve corrupted!${end}"
-[[ $swapm =~ ^[0-9]+$ ]] || echo "${red}[ERROR] System info (swap) retrieve corrupted!${end}"
-[[ $ramk =~ ^[0-9]+$ ]] || echo "${red}[ERROR] System info (ram) retrieve corrupted!${end}"
-if [[ $(conf_read db-engine) == "mysql" && $ram -lt 1 ]]; then
-	echo "${red}[ERROR] MySQL is set as database engine!${dim} (Not enough RAM: ${ramb}MB)"
-	echo "You should consider MariaDB instead for small servers under 2GB.${end}"
-	exit 1
-elif [[ $(conf_read db-engine) == "mysql" && $(cpu_arch) == "ARM" ]]; then
-	echo "${red}[ERROR] MySQL is set as database engine!${dim} (ARM processors are not supported by MySQL)${end}"
-	echo "${red}You should consider MariaDB instead for ARM servers.${end}"
-	exit 1
-fi
-
-
-linux_optim() {
-	api-events_update ic1
-	[[ $(conf_read linux-optim) == "true" ]] && return
-	
-	# Kernel Optimization
-	if [[ $(conf_read kernel-optim) != "false" ]]; then
-		echo "${gre}Wait while Webinoly optimize your Ubuntu Operating System...${end}"
-		api-events_update ic2
-		[[ -f /etc/sysctl.d/90-webinoly.conf ]] && sudo rm -rf /etc/sysctl.d/90-webinoly.conf
-		sudo cp /opt/webinoly/templates/general/sysctl /etc/sysctl.d/90-webinoly.conf
-		sudo modprobe tcp_bbr
-		
-		if [[ $ram -gt 28 ]]; then
-			sudo sed -i "/vm.swappiness =/c \vm.swappiness = 1" /etc/sysctl.d/90-webinoly.conf
-			sudo sed -i "/vm.min_free_kbytes =/c \vm.min_free_kbytes = $(($ramb*20))" /etc/sysctl.d/90-webinoly.conf
-			sudo sed -i "/vm.dirty_ratio =/c \vm.dirty_ratio = 0" /etc/sysctl.d/90-webinoly.conf
-			sudo sed -i "/vm.dirty_background_ratio =/c \vm.dirty_background_ratio = 0" /etc/sysctl.d/90-webinoly.conf
-			sudo sed -i "/vm.dirty_expire_centisecs =/c \vm.dirty_expire_centisecs = 500" /etc/sysctl.d/90-webinoly.conf
-			sudo sed -i "/#vm.dirty_bytes =/c \vm.dirty_bytes = 5505024000" /etc/sysctl.d/90-webinoly.conf
-			sudo sed -i "/#vm.dirty_background_bytes =/c \vm.dirty_background_bytes = 917504000" /etc/sysctl.d/90-webinoly.conf
-			sudo sed -i "/#vm.dirty_writeback_centisecs =/c \vm.dirty_writeback_centisecs = 100" /etc/sysctl.d/90-webinoly.conf
-		elif [[ $ram -gt 2 ]]; then
-			# vm.min_free_kbytes - Default is 65M, if RAM >= 3Gb take 3%, and > 28Gb only 2%
-			sudo sed -i "/vm.min_free_kbytes =/c \vm.min_free_kbytes = $(($ramb*30))" /etc/sysctl.d/90-webinoly.conf
-			sudo sed -i "/vm.dirty_ratio =/c \vm.dirty_ratio = 30" /etc/sysctl.d/90-webinoly.conf
-			sudo sed -i "/vm.dirty_expire_centisecs =/c \vm.dirty_expire_centisecs = 900" /etc/sysctl.d/90-webinoly.conf
-			sudo sed -i "/vm.swappiness =/c \vm.swappiness = 5" /etc/sysctl.d/90-webinoly.conf
-		#else
-			# Less than 3Gb RAM: Take the default values in the template.
-		fi
-		
-		if [[ $ram -gt 1 ]]; then
-			local shmmni=$(($ram*256))
-			local msgmni=$(($ram*1024))
-		else
-			local shmmni=256
-			local msgmni=1024
-		fi
-		
-		# Although you can apply values larger than 32768 by using the boot parameter ipcmni_extend, the values are still capped to 32768 internally.
-		[[ $shmmni -gt 32768 ]] && local shmmni=32768
-		[[ $msgmni -gt 32768 ]] && local msgmni=32768
-		
-		# https://www.ibm.com/docs/en/db2/11.1?topic=unix-modifying-kernel-parameters-linux
-		sudo sed -i "/kernel.shmmni =/c \kernel.shmmni = $shmmni" /etc/sysctl.d/90-webinoly.conf
-		sudo sed -i "/kernel.shmmax =/c \kernel.shmmax = $(($ramk*800))" /etc/sysctl.d/90-webinoly.conf # Less than 80% of total ram
-		sudo sed -i "/kernel.shmall =/c \kernel.shmall = $(($(getconf PAGE_SIZE)*2))" /etc/sysctl.d/90-webinoly.conf
-		sudo sed -i "/kernel.msgmni =/c \kernel.msgmni = $msgmni" /etc/sysctl.d/90-webinoly.conf
-		sudo sed -i "/kernel.sem =/c \kernel.sem = 250 1024000 32 $shmmni" /etc/sysctl.d/90-webinoly.conf
-		
-		# https://www.getpagespeed.com/server-setup/nginx/maximizing-nginx-performance-a-comprehensive-guide-to-tuning-the-backlog-and-net-core-somaxconn-parameters
-		sudo sed -i "/net.core.somaxconn = /c \net.core.somaxconn = ${somax}" /etc/sysctl.d/90-webinoly.conf
-		
-		# Also: 'sudo service procps force-reload' but we prefer this method to better display errors (just in case)
-		sudo sysctl -p -q /etc/sysctl.d/90-webinoly.conf
-		
-		api-events_update ic3
-	fi
-	
-	# File directors per process
-	[[ -n $(ulimit -Hn) && $fd_per_process -lt $(ulimit -Hn) ]] && local rootfd=$(ulimit -Hn) || local rootfd=$fd_per_process
-	sudo sed -i "/End of file/i \# WebinolyStart - Don't delete" /etc/security/limits.conf
-	sudo sed -i "/End of file/i \root	-	nofile	${rootfd}" /etc/security/limits.conf
-	sudo sed -i "/End of file/i \*	-	nofile	${fd_per_process}" /etc/security/limits.conf
-	
-	# https://mariadb.com/kb/en/configuring-linux-for-mariadb/
-	sudo sed -i "/End of file/i \mysql soft core unlimited" /etc/security/limits.conf
-	sudo sed -i "/End of file/i \mysql hard core unlimited" /etc/security/limits.conf
-	sudo sed -i "/End of file/i \mysql soft nofile 65535" /etc/security/limits.conf
-	sudo sed -i "/End of file/i \mysql hard nofile 65535" /etc/security/limits.conf
-	sudo sed -i "/End of file/i \# WebinolyEnd" /etc/security/limits.conf
-	
-	# File directors for Nginx
-	[[ ! -d /etc/systemd/system/nginx.service.d ]] && sudo mkdir /etc/systemd/system/nginx.service.d
-	[[ ! -f /etc/systemd/system/nginx.service.d/nofile_limit.conf ]] && sudo touch /etc/systemd/system/nginx.service.d/nofile_limit.conf
-	[[ ! -s /etc/systemd/system/nginx.service.d/nofile_limit.conf || -z $(cat -v /etc/systemd/system/nginx.service.d/nofile_limit.conf | grep -m 1 '[^[:space:]]') ]] && sudo echo "[Service]
-LimitNOFILE=$fd_per_process" >> /etc/systemd/system/nginx.service.d/nofile_limit.conf
-	
-	# Disable Transparent Huge Pages
-	# Just to be sure is disabled, most cloud providers bring this settings disabled by default.
-	# "madvise" can be good in some cases.
-	if [[ ! -f /etc/systemd/system/webinoly-disable-thp.service ]]; then
-		sudo touch /etc/systemd/system/webinoly-disable-thp.service
-		echo "[Unit]
-Description=Disable Transparent Huge Pages (THP)
-
-[Service]
-Type=simple
-ExecStart=/bin/sh -c \"echo never > /sys/kernel/mm/transparent_hugepage/enabled && echo never > /sys/kernel/mm/transparent_hugepage/defrag\"
-
-[Install]
-WantedBy=multi-user.target" >> /etc/systemd/system/webinoly-disable-thp.service
-	fi
-	
-	# Silent is not the best, but messages recommending "daemon-reload" are annoying!
-	sudo systemctl start webinoly-disable-thp > /dev/null 2>&1
-	sudo systemctl enable webinoly-disable-thp > /dev/null 2>&1
-	
-	# RAM: By default linux takes 10% for /run, we increase this value to 25%! https://github.com/QROkes/webinoly/issues/19
-	echo "tmpfs	/run	tmpfs	nodev,nosuid,size=$(check_var run-folder-size)%,mode=755	0	0" >> /etc/fstab
-	sudo mount -o remount tmpfs > /dev/null 2>&1
-	
-	swap_create
-	[[ -n $(conf_read timezone) ]] && set_timezone
-	
-	sudo systemctl daemon-reload
-	[[ $(conf_read nginx) == "true" ]] && sudo systemctl restart nginx # We need to kill the process, don't use reload
-	conf_write linux-optim true
-	api-events_update ic6
-}
-
-
-linux_purge() {
-	if [[ $(conf_read linux-optim) == "true" ]]; then
-		api-events_update pn7
-		
-		sudo rm -rf /etc/systemd/system/nginx.service.d
-		sudo rm -rf /etc/sysctl.d/90-webinoly.conf
-		sudo sed -i '/WebinolyStart/,/WebinolyEnd/{/.*/d}' /etc/security/limits.conf
-		#sudo sysctl -p -q /etc/sysctl.d/90-webinoly.conf - reload all sysctl, webinoly file doesn't exist at this point!
-		sudo service procps force-reload
-		
-		sudo sed -i '/\/run/d' /etc/fstab
-		sudo mount -o remount tmpfs > /dev/null 2>&1
-		
-		# Check in case of upgrading old stacks (before 1.14.0) when this service still not included
-		if [[ -f /etc/systemd/system/webinoly-disable-thp.service ]]; then
-			sudo systemctl stop webinoly-disable-thp
-			sudo systemctl disable webinoly-disable-thp > /dev/null 2>&1
-			sudo rm /etc/systemd/system/webinoly-disable-thp.service
-		fi
-		
-		[[ $recalculate == "on" ]] && swap_delete
-
-		sudo systemctl daemon-reload
-		# Never reload/restart nginx here!
-		conf_write linux-optim purged
-		api-events_update pn8
-	fi
-}
+source /opt/webinoly/lib/kernel
 
 
 nginx_install() {
@@ -204,15 +41,18 @@ nginx_install() {
 php_install() {
 	api-events_update ip1
 	if [[ -n $(conf_read php-ver) && $(check_php_version $(conf_read php-ver)) == "true" ]]; then
-		echo "${gre}PHP version '$(conf_read php-ver)' is set as default.${end}"
+		echo "${blu}PHP version${end} '$(conf_read php-ver)' ${blu}is set as default.${end}"
 	else
 		# Default PHP version
 		conf_write php-ver $php_default
 	fi
 	local ver=$(conf_read php-ver)
 	
-	sudo apt -y install php${ver}-common php${ver}-cli php${ver}-fpm php${ver}-curl php${ver}-gd php${ver}-imap php${ver}-readline php${ver}-mysql php${ver}-mbstring php${ver}-bcmath php${ver}-opcache php${ver}-zip php${ver}-xml php${ver}-soap php${ver}-imagick php${ver}-msgpack php${ver}-igbinary php${ver}-intl php-pear graphviz ghostscript
+	sudo apt -y install php${ver}-common php${ver}-cli php${ver}-fpm php${ver}-curl php${ver}-gd php${ver}-imap php${ver}-readline php${ver}-mysql php${ver}-mbstring php${ver}-bcmath php${ver}-zip php${ver}-xml php${ver}-soap php${ver}-imagick php${ver}-msgpack php${ver}-igbinary php${ver}-intl php-pear graphviz ghostscript
 	
+	# Starting with 8.5: Opcache extension is now always bundled in core, cannot be installed separately.
+	[[ $ver =~ ^(5.6|7.0|7.1|7.2|7.3|7.4|8.0|8.1|8.2|8.3|8.4)$ ]] && sudo apt -y install php${ver}-opcache
+
 	conf_write php true
 	
 	if [[ -d /etc/php/${ver}/fpm ]] && systemctl is-active --quiet php${ver}-fpm; then
@@ -228,7 +68,7 @@ php_install() {
 
 mysql_install() {
 	api-events_update im3
-	echo "${gre}MySQL/MariaDB version '$(conf_read mysql-ver)' is set as default.${end}"
+	echo "${blu}MySQL/MariaDB version${end} '$(conf_read mysql-ver)' ${blu}is set as default.${end}"
 	
 	# debconf-utils for unattended scripts
 	# debconf-get-selections | grep phpmyadmin   <<-- list conf variables
@@ -257,10 +97,8 @@ mysql_install() {
 		echo "mysql-community-server mysql-community-server/data-dir note" | debconf-set-selections
 		sudo apt -y install mysql-server
 	else
-		# This option is no longer available in recent MariaDB versions, so we set the root password in the next step after installation.
-		#local ver=$(conf_read mysql-ver)
-		#echo "mariadb-server-${ver} mysql-server/root_password password $AUTOGENPASS_ROOT" | debconf-set-selections
-		#echo "mariadb-server-${ver} mysql-server/root_password_again password $AUTOGENPASS_ROOT" | debconf-set-selections
+		echo "mariadb-server  mariadb-server/feedback_optin   boolean false" | debconf-set-selections
+		#echo "mariadb-server  mariadb-server/old_data_directory_saved note" | debconf-set-selections  # Displayed when MySQL (not MariaDB) old data found...
 		sudo apt -y install apt-transport-https dirmngr mariadb-server
 	fi
 	
@@ -420,7 +258,8 @@ fastcgi_param  HTTP_ACCEPT_ENCODING "";
 # WebinolyCustomEnd' >> /etc/nginx/fastcgi_params
 	
 	# FastCGI Cache size: We take 90% of /run folder size! https://github.com/QROkes/webinoly/issues/19
-	sudo sed -i "/fastcgi_cache_path/c \fastcgi_cache_path /run/nginx-cache levels=1:2 keys_zone=WORDPRESS:50m max_size=$(((9*$ramb*$(check_var run-folder-size))/1000))m inactive=7d;" /etc/nginx/conf.d/fastcgi.conf
+	[[ -n $(check_var run-folder-size) ]] && local runfoldersize=$(check_var run-folder-size) || local runfoldersize=10
+	sudo sed -i "/fastcgi_cache_path/c \fastcgi_cache_path /run/nginx-cache levels=1:2 keys_zone=WORDPRESS:50m max_size=$(((9*$ramb*$runfoldersize)/1000))m inactive=7d;" /etc/nginx/conf.d/fastcgi.conf
 	sudo sed -i "/fastcgi_read_timeout/c \fastcgi_read_timeout $(check_var php-max-time)s;" /etc/nginx/conf.d/fastcgi.conf
 	
 	# www-data sftp default uploads permissions 750 and 640, instead of 775 and 664.
@@ -432,13 +271,13 @@ fastcgi_param  HTTP_ACCEPT_ENCODING "";
 	[[ -n $(conf_read default-response) ]] && sudo webinoly -default-site=$(conf_read default-response)
 	[[ -n $(conf_read tools-port-set) ]] && sudo webinoly -tools-port=$(conf_read tools-port-set)
 	[[ -n $(conf_read tools-site) ]] && sudo webinoly -tools-site=$(conf_read tools-site)
-	[[ $(conf_read global-access-log-off) =~ ^(false|purged)$ ]] && sudo log -only-error=off || sudo log -only-error=on
+	[[ $(conf_read global-access-log-off) =~ ^(false|purged)$ ]] && sudo log -access-log=on || sudo log -access-log=off
 	[[ -n $(conf_read fastcgi-conf) ]] && sudo webinoly -cache-valid=[$(conf_read fastcgi-conf)]
 	[[ -n $(conf_read auth-whitelist-ip) ]] && sudo httpauth -whitelist=$(conf_read auth-whitelist-ip)
 	[[ -n $(conf_read blockip) ]] && sudo webinoly -blockip=$(conf_read blockip)
 	
-	[[ $(conf_read sftp-www-data) == "true" ]] && sudo webinoly -login-www-data=on
-	[[ $(conf_read sftp-www-data) == "false" ]] && sudo webinoly -login-www-data=off
+	[[ $(conf_read sftp-www-data) == "true" ]] && sudo webinoly -sftp=on
+	[[ $(conf_read sftp-www-data) == "false" ]] && sudo webinoly -sftp=off
 	
 	http_header_referrer
 	http_header_hsts
@@ -467,8 +306,8 @@ fastcgi_param  HTTP_ACCEPT_ENCODING "";
 		ln -s /var/www $CURRENT_HOME
 		sudo chown -h ${CURRENT_USER}:${CURRENT_USER} $CURRENT_HOME/www
 	fi
-	
-	conf_write server-version $svr_version
+
+	init_nginx
 	conf_write nginx-optim true
 	sudo systemctl reload nginx
 	echo "${gre}Nginx has been successfully Optimized by Webinoly! ${end}"
@@ -513,6 +352,11 @@ php_optim() {
 	sudo sed -i -r '/^[;]?opcache.enable_cli[[:space:]]?=/c\opcache.enable_cli=1' /etc/php/$ver/fpm/php.ini
 	sudo sed -i -r '/^[;]?opcache.enable[[:space:]]?=/c\opcache.enable=1' /etc/php/$ver/fpm/php.ini
 	
+	sudo sed -i -r "/^[;]?session.use_strict_mode[[:space:]]?=/c\session.use_strict_mode = 1" /etc/php/$ver/fpm/php.ini
+	sudo sed -i -r "/^[;]?session.cookie_httponly[[:space:]]?=/c\session.cookie_httponly = 1" /etc/php/$ver/fpm/php.ini
+	sudo sed -i -r "/^[;]?session.cookie_secure[[:space:]]?=/c\session.cookie_secure = 1" /etc/php/$ver/fpm/php.ini
+	sudo sed -i -r "/^[;]?session.cookie_samesite[[:space:]]?=/c\session.cookie_samesite = $(check_var php-session-cookie-samesite)" /etc/php/$ver/fpm/php.ini
+	
 	# Not set, unless non-empty and valid!
 	if [[ -n $(check_var php-opcache-timestamps) ]]; then
 		sudo sed -i -r "/^[;]?opcache.validate_timestamps[[:space:]]?=/c\opcache.validate_timestamps=$(check_var php-opcache-timestamps)" /etc/php/$ver/fpm/php.ini
@@ -544,6 +388,8 @@ php_optim() {
 	#sudo sed -i -r '/^[;]?listen.allowed_clients[[:space:]]?=/c\listen.allowed_clients = 127.0.0.1' /etc/php/$ver/fpm/pool.d/www.conf
 	
 	[[ $(conf_read php-tool-redis) == "true" && -n $(conf_read redis-max-mem) ]] && redis_optim
+	
+	init_php
 	conf_write php-optim true
 	sudo systemctl restart php${ver}-fpm
 	echo "${gre}PHP has been successfully Optimized by Webinoly! ${end}"
@@ -600,6 +446,7 @@ host = localhost
 		$MYSQL_UPGRADE_COMMAND --user=admin --force --silent
 	fi
 	
+	init_mysql
 	conf_delete mysql-reinstall
 	conf_write mysql-optim true
 	echo "${gre}MySQL/MariaDB has been successfully Optimized by Webinoly! ${end}"
@@ -799,7 +646,10 @@ php_tool_memcached() {
 	local ver=$(conf_read php-ver)
 	
 	# Memcached (Object Cache)
-	sudo apt -y install php${ver}-memcached php${ver}-memcache memcached
+	sudo apt -y install php${ver}-memcached memcached
+	
+	# Starting with 8.5: Memcache module still not available, we should consider remove it permanently.
+	[[ $ver =~ ^(5.6|7.0|7.1|7.2|7.3|7.4|8.0|8.1|8.2|8.3|8.4)$ ]] && sudo apt -y install php${ver}-memcache
 	
 	conf_write php-tool-memcached true
 	
@@ -975,10 +825,10 @@ message_welcome() {
 	if [[ $1 =~ ^(full|basic|light|partial)$ ]]; then
 		echo "${dim} -    -    -    -    -    -    -    -    -    -    -    - ${end}${blu}"
 		echo ""
-		[[ $1 == "full" ]] && echo "Build Profile: ${dim}Full Stack (Nginx, PHP, MySQL/MariaDB and ALL the additional tools)"
-		[[ $1 == "basic" ]] && echo "Build Profile: ${dim}Basic Stack (Only the most essential tools)"
-		[[ $1 == "light" ]] && echo "Build Profile: ${dim}Light Stack (Only core packages, NO additional tools will be installed)"
-		[[ $1 == "partial" ]] && echo "Build Profile: ${dim}Partial Stack"
+		[[ $1 == "full" ]] && echo "Build Profile: ${dim}Full Stack (LEMP, all the way)"
+		[[ $1 == "basic" ]] && echo "Build Profile: ${dim}Basic Stack (LEMP + SSL + Backups)"
+		[[ $1 == "light" ]] && echo "Build Profile: ${dim}Light Stack (Only LEMP Core Packages)"
+		[[ $1 == "partial" ]] && echo "Build Profile: ${dim}Partial Stack (Single Package)"
 	fi
 	echo "${end}"
 }
@@ -1093,10 +943,10 @@ stack_builder() {
 	
 	if [[ $3 =~ ^(mysql|mysql-client)$ && $(conf_read mysql-client) != "true" ]]; then
 		if [[ -n $(conf_read mysql-ver) && $(check_mysql_version $(conf_read mysql-ver)) == "true" ]]; then
-			echo "${blu}Retrieving a saved MySQL/MariaDB version configured before...${dim}${end}"
+			echo "${blu}Retrieving a saved MySQL/MariaDB version configured before... ${dim}(Ver: $(conf_read mysql-ver))${end}"
 		else
-			echo "${blu}Setting the default MySQL/MariaDB version...${dim}${end}"
 			[[ $(conf_read db-engine) == "mysql" ]] && conf_write mysql-ver $mysql_default || conf_write mysql-ver $mariadb_default
+			echo "${blu}Setting the default MySQL/MariaDB version... ${dim}(Ver: $(conf_read mysql-ver))${end}"
 		fi
 		
 		if [[ $(conf_read db-engine) == "mysql" ]]; then

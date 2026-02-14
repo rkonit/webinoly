@@ -139,7 +139,7 @@ if [[ -n $mysql || ( -n $php && -n $domain ) ]]; then
 			else
 				createsite
 			fi
-			[[ $(conf_read php-info) != "false" ]] && sudo sed -i '/common\/php.conf/c \	include common/phpx.conf;' /etc/nginx/sites-available/$domain
+			[[ $(conf_read php-info) == "true" ]] && sudo sed -i '/common\/php.conf/c \	include common/phpx.conf;' /etc/nginx/sites-available/$domain
 		fi
 	fi
 	
@@ -371,8 +371,11 @@ elif [[ -n $clone_from ]]; then
 	elif [[ -f /etc/nginx/sites-available/$domain && -n $subfolder && $(is_subfolder $domain $subfolder) != "false" && $overwrite != "on" ]]; then
 		echo "${red}[ERROR] Subfolder ${blu}'$subfolder'${red} already exists!${end}"
 		exit 1
-	elif [[ $(is_parked $clone_from) == "true" ]]; then
-		echo "${red}[ERROR] Cloning a parked site is not allowed!${end}"
+	elif ! [[ $(site_type $clone_from $subfolder) =~ ^(HTML|PHP|WordPress)$ ]]; then
+		echo "${red}[ERROR] Only HTML, PHP or WordPress sites are supported for cloning!${end}"
+		exit 1
+	elif [[ $overwrite == "on" && -f /etc/nginx/sites-available/$domain && $(site_type $clone_from $subfolder) != $(site_type $domain $subfolder) ]]; then
+		echo "${red}[ERROR] Source and destination sites should be the same type of site!${end}"
 		exit 1
 	fi
 	

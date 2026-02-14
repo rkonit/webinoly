@@ -55,7 +55,7 @@ purge_mysql_client() {
 
 purge_nginx_tools() {
 	# Remove additional tools
-	[[ $(conf_read login-www-data) == "true" ]] && webinoly -login-www-data=off
+	[[ $(conf_read login-www-data) == "true" ]] && webinoly -sftp=off
 	[[ $(conf_read nginx-tool-ssl) == "true" ]] && stack -letsencrypt -purge=force
 	[[ $(conf_read nginx-tool-bkp) == "true" ]] && stack -backups -purge=force
 	[[ $(conf_read mysql-tool-pma) == "true" ]] && stack -pma -purge=force
@@ -64,6 +64,41 @@ purge_nginx_tools() {
 	[[ -n $(conf_read tools-site) ]] && conf_delete tools-site -commented
 	[[ -n $(conf_read default-response) ]] && conf_delete default-response -commented
 	[[ -n $(conf_read default-site) ]] && conf_delete default-site
+}
+
+check_mysql_different_engine_data_remains() {
+	# /var/lib/mysql/mariadb_upgrade_info  -- 11.8.3-MariaDB
+	# /var/lib/mysql/mysql_upgrade_info  --   10.11.14-MariaDB
+	# /var/lib/mysql/mysql_upgrade_history -- 8.4   (MySQL 8.0 no file found)
+	
+	local out="false"
+	# First, check if MySQL/MariaDB data folder exist...
+	if [[ -d /var/lib/mysql ]]; then
+		if [[ $(conf_read db-engine) == "mysql" ]]; then
+			# For MySQL, MariaDB data should not exist...
+			if [[ -f /var/lib/mysql/mariadb_upgrade_info ]]; then
+				local out="true"
+			elif [[ -f /var/lib/mysql/mysql_upgrade_info && -n $(grep -F "MariaDB" /var/lib/mysql/mysql_upgrade_info) ]]; then
+				local out="true"
+			fi
+		else
+			# For MariaDB, MySQL data should not exist...
+			if [[ -f /var/lib/mysql/mysql_upgrade_history && -z $(grep -F "MariaDB" /var/lib/mysql/mysql_upgrade_history) ]]; then
+				local out="true"
+			fi
+		fi
+	fi
+	
+	if [[ $out == "true" ]]; then
+		if [[ $(conf_read db-engine) == "mysql" ]]; then
+			echo "${red}[ERROR] You have MySQL set as database engine, but we found you have MariaDB data in your server.${end}"
+		else
+			echo "${red}[ERROR] You have MariaDB set as database engine, but we found you have MySQL data in your server.${end}"
+		fi
+		
+		clear_force_flag
+		exit 1
+	fi
 }
 
 
@@ -154,6 +189,8 @@ if [[ -n $purge && ( -n $html || -n $nginx ) ]]; then
 			conf_write nginx purged
 			conf_write nginx-optim purged
 			conf_delete server-version
+			init_nginx
+			
 			echo ""
 			echo "${gre}Nginx has been deleted successfully! ${end}"
 			echo ""
@@ -196,7 +233,10 @@ elif [[ -n $purge && -n $php ]]; then
 			ver=$(conf_read php-ver)
 			sudo systemctl stop php${ver}-fpm
 			
-			sudo apt -y purge php${ver}-common php${ver}-cli php${ver}-fpm php${ver}-curl php${ver}-gd php${ver}-imap php${ver}-readline php${ver}-mysql php${ver}-mbstring php${ver}-bcmath php${ver}-mysql php${ver}-opcache php${ver}-zip php${ver}-xml php${ver}-soap php${ver}-imagick php${ver}-msgpack php${ver}-igbinary php${ver}-intl php-pear graphviz ghostscript
+			sudo apt -y purge php${ver}-common php${ver}-cli php${ver}-fpm php${ver}-curl php${ver}-gd php${ver}-imap php${ver}-readline php${ver}-mysql php${ver}-mbstring php${ver}-bcmath php${ver}-mysql php${ver}-zip php${ver}-xml php${ver}-soap php${ver}-imagick php${ver}-msgpack php${ver}-igbinary php${ver}-intl php-pear graphviz ghostscript
+			
+			# Starting with 8.5: Opcache extension is now always bundled in core, cannot be installed separately.
+			[[ $ver =~ ^(5.6|7.0|7.1|7.2|7.3|7.4|8.0|8.1|8.2|8.3|8.4)$ ]] && sudo apt -y purge php${ver}-opcache
 			
 			# For old packages - before ondrej split modules
 			sudo apt -y purge php-imagick php-msgpack
@@ -226,6 +266,7 @@ elif [[ -n $purge && -n $php ]]; then
 			
 			conf_write php purged
 			conf_write php-optim purged
+			init_php
 			
 			echo ""
 			echo "${gre}PHP has been deleted successfully! ${end}"
@@ -242,6 +283,8 @@ elif [[ -n $purge && -n $php ]]; then
 	
 elif [[ -n $purge && -n $mysql ]]; then
 	api-events_update pm1
+	check_mysql_different_engine_data_remains
+	
 	if [[ $(conf_read mysql) != "true" && $(conf_read mysql-client) == "true" ]]; then
 		purge_mysql_client
 		echo "${dim}MySQL/MariaDB is not installed, hence can not be deleted! ${end}"
@@ -296,6 +339,7 @@ elif [[ -n $purge && -n $mysql ]]; then
 			purge_autoremove="true"
 			conf_write mysql purged
 			conf_write mysql-optim purged
+			init_mysql
 			
 			echo ""
 			echo "${gre}MySQL/MariaDB has been deleted successfully! ${end}"
@@ -510,7 +554,8 @@ elif [[ -n $purge && -n $memcached ]]; then
 
 		if [[ $answer == [Yy] || $(conf_read force-flag) == "true" ]]; then
 			ver=$(conf_read php-ver)
-			sudo apt -y purge php${ver}-memcached php${ver}-memcache memcached
+			sudo apt -y purge php${ver}-memcached memcached
+			[[ $ver =~ ^(5.6|7.0|7.1|7.2|7.3|7.4|8.0|8.1|8.2|8.3|8.4)$ ]] && sudo apt -y purge php${ver}-memcache
 			purge_autoremove="true"
 			
 			# For old packages - before ondrej split modules
@@ -576,9 +621,9 @@ elif [[ -n $purge && -n $lemp ]]; then
 
 elif [[ -n $purge_server_all ]]; then
 	api-events_update st2
-	echo ""
-	echo "${red}¡ C A U T I O N !  You are about to remove Webinoly Stack completely from your server!"
-	echo "This action will remove Nginx, PHP, MySQL/MariaDB and all the additional tools."
+	echo "${red}"
+	echo "${bol}¡ C A U T I O N !  Removing the Webinoly stack will delete NGINX, PHP, MySQL/MariaDB, and all associated components.${end}"
+	echo "${red}* If you plan to reinstall or migrate, consider backing up your configuration first."
 	echo "${end}"
 	if [[ $(conf_read force-flag) != "true" && $force != 1 ]]; then
 		echo " ${blu}Are you sure [y/N]? ${end}"
@@ -604,7 +649,6 @@ elif [[ -n $purge_server_all ]]; then
 		[[ $(conf_read nginx-tool-bkp) == "true" ]] && stack -backups -purge=force
 		
 		# Remove remanent packages and things!
-		[[ -d /etc/datadog-agent ]] && webinoly -datadog -purge
 		[[ -f /etc/ssl/certs/webinoly-blackhole.crt.pem ]] && sudo rm -rf /etc/ssl/certs/webinoly-blackhole.crt.pem
 		[[ -f /etc/ssl/private/webinoly-blackhole.key.pem ]] && sudo rm -rf /etc/ssl/private/webinoly-blackhole.key.pem
 		[[ -f /etc/ssl/dhparam.pem ]] && sudo rm -rf /etc/ssl/dhparam.pem
@@ -622,10 +666,11 @@ elif [[ -n $purge_server_all ]]; then
 		[[ $(conf_read swap-owner) == "webinoly" ]] && swap_delete
 		
 		echo "${gre}"
-		echo "****************************************************************************"
-		echo "***     ${bol}Webinoly Stack have been completely removed from your server${end}${gre}     ***"
-		echo "****         ${dim}We are sad because you decided to remove Webinoly!!${end}${gre}        ****"
-		echo "****************************************************************************"
+		echo "***********************************************************************"
+		echo "**   ${bol}Webinoly stack has been successfully removed from your server ${end}${gre}  **"
+		echo "**********         We're grateful you gave it a try!  ${end}${gre}      ***********"
+		echo "***********************************************************************"
+		echo "${dim}* If you have any feedback or suggestions, we'd love to hear from you.${end}${gre}"
 		echo "${end}"
 	else
 		echo ""
@@ -653,6 +698,7 @@ elif [[ -n $php ]]; then
 	[[ $answer = [Yy] || $php == "nginx" ]] && stack_builder nginx php false $build || stack_builder false php false $build
 	
 elif [[ -n $mysql ]]; then
+	check_mysql_different_engine_data_remains
 	[[ $(conf_read php) != "true" || $(conf_read nginx) != "true" ]] && build=light
 	[[ $mysql == "client" ]] && stack_builder false false mysql-client || stack_builder false false mysql $build
 
@@ -732,6 +778,7 @@ elif [[ -n $php_ver ]]; then
 
 elif [[ -n $mysql_ver ]]; then
 	api-events_update st4
+	check_mysql_different_engine_data_remains
 	
 	if [[ $mysql_ver != true && $(check_mysql_version $mysql_ver) == "true" ]]; then
 		echo "${blu}New MySQL (MariaDB) version: '$mysql_ver' ${end}"

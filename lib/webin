@@ -550,7 +550,22 @@ server_reset() {
 			# Added in v1.11.0, will fail if stack was built before:
 			[[ -f /opt/webinoly/templates/source/php-fpm.conf ]] && sudo cat /opt/webinoly/templates/source/php-fpm.conf > /etc/php/$(conf_read php-ver)/fpm/php-fpm.conf
 			sudo rm -rf /etc/php/$(conf_read php-ver)/fpm/pool.d/debug.conf
+			
 			php_optim
+			
+			if [[ $(conf_read php-tool-redis) == "true" ]]; then
+				sudo systemctl restart redis-server
+				echo "${gre}${dim}Redis service restarted!${end}"
+			fi
+			if [[ $(conf_read php-tool-memcached) == "true" ]]; then
+				sudo systemctl restart memcached
+				echo "${gre}${dim}Memcached service restarted!${end}"
+			fi
+			if [[ $(conf_read php-tool-postfix) == "true" ]]; then
+				sudo systemctl restart postfix
+				echo "${gre}${dim}Postfix service restarted!${end}"
+			fi
+			
 			echo "${gre}PHP settings has been updated successfully!${end}"
 		else
 			echo "${red}[ERROR] PHP could not been updated, source files not found!${end}"
@@ -579,6 +594,24 @@ server_reset() {
 	elif [[ $(conf_read nginx) != "true" && $server_reset == "permissions" ]]; then
 		echo "${red}[ERROR] Nginx not found, seems like is not installed in your server!${end}"
 		err_cont=true
+	fi
+	
+	if [[ $server_reset == "confile" ]]; then
+		if [[ -f /opt/webinoly/webinoly.conf ]]; then
+			local oldfilename="webinoly.conf_$(date +%F)-$(date +%T).old"
+			mv /opt/webinoly/webinoly.conf /opt/webinoly/${oldfilename}
+			IFS=$'\n' # FOR loop takes whitespace as a delimiter, so IFS overwrite this.
+			for i in $(grep -E "^([a-z\-]+)\:.*$" /opt/webinoly/${oldfilename})
+			do
+				conf_write $(echo $i | cut -d':' -f 1 -s) $(echo $i | cut -d':' -f 2- -s)
+			done
+			
+			echo "${gre}Webinoly configuration file successfully regenerated!${end}"
+			nginx_not="true" # Nginx-Reload not-needed.
+		else
+			echo "${red}[ERROR] Webinoly configuration file not found!${end}"
+			err_cont=true
+		fi
 	fi
 	
 	# Display message just to show we are alive.
@@ -754,8 +787,8 @@ set_tools_site() {
 		
 		local force_www=$(is_force_redirect $tools_site)
 		if [[ $force_www =~ ^(www|root)$ ]]; then
-			sudo site galaboral.com -force-redirect=off > /dev/null 2>&1
-			sudo site galaboral.com -force-redirect=$force_www > /dev/null 2>&1
+			sudo site $tools_site -force-redirect=off > /dev/null 2>&1
+			sudo site $tools_site -force-redirect=$force_www > /dev/null 2>&1
 			echo "${gre}${dim}Force-Redirect ${blu}'${force_www}'${gre} settings updated!${end}"
 		fi
 	
@@ -912,7 +945,8 @@ webinoly_uninstall() {
 		sudo rm /usr/bin/site
 		sudo rm /usr/bin/httpauth
 		sudo rm /usr/bin/log			
-		echo "${gre}Webinoly App has been removed successfully from your server!${end}"
+		echo "${gre}Webinoly App has been successfully removed from your server."
+		echo "${dim}* If you have any feedback or suggestions, we'd love to hear from you.${end}"
 		exit 0 # Only allowed here because after this Webinoly does not exist in the server!
 	else
 		echo "${red}Action aborted!${end}"
@@ -1235,7 +1269,6 @@ aws_secret_access_key = $pass" >> $HOME/.aws/credentials
 
 
 database_import() {
-	check_for_mysql
 	[[ -z $file ]] && read -p "${blu}SQL file path to import: ${end}" file
 	if [[ -z $file || ! -f $file ]]; then
 		echo "${red}[ERROR] Please, enter a valid file path!${end}"

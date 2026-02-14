@@ -4,19 +4,18 @@
 # Prevent 'tput' errors when running from Cron
 [[ -z $TERM || $TERM == "unknown" || $TERM == "dumb" ]] && export TERM=dumb
 
-readonly app_version="1.19.4"
-readonly svr_version="1.11"
+readonly app_version="1.20.0"
+readonly svr_version="1.12"
 readonly os_ubuntu_supported=(focal jammy noble) # https://ubuntu.com/about/release-cycle
-readonly php_supported=(7.4 8.0 8.1 8.2 8.3 8.4) # https://www.php.net/supported-versions.php
+readonly php_supported=(7.4 8.0 8.1 8.2 8.3 8.4 8.5) # https://www.php.net/supported-versions.php
 readonly php_default="8.4"
-readonly mariadb_supported=(10.11 11.4 11.8) # https://mariadb.com/kb/en/mariadb-server-release-dates/
+readonly mariadb_supported=(10.11 11.4 11.8) # https://mariadb.com/docs/release-notes/community-server
 readonly mariadb_default="11.8"
 readonly mysql_supported=(8.0 8.4) # https://endoflife.date/mysql
 readonly mysql_default="8.4"
 readonly tools_port_default="22222"
 
 # Additional Tools
-readonly datadog_agent_ver="7"
 readonly duplicity_version="2.1.4"
 
 # echo colors
@@ -1064,8 +1063,8 @@ is_dedicated_proxy_domain() {
 
 is_forward() {
 	if [[ -f /etc/nginx/sites-available/$1 ]]; then
-		local index=$(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$1 | grep -F "index ")
-		local return=$(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$1 | grep -F "return 301 ")
+		local index=$(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$1 | grep -F "index index.")
+		local return=$(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$1 | grep -F "return 30")
 		[[ ! -d /var/www/$1 && -z $index && -n $return ]] && echo "true" || echo "false"
 	else
 		echo "false"
@@ -1245,25 +1244,6 @@ is_empty_root_site() {
 }
 
 
-is_dd_log() {
-	if [[ $1 == "nginx" ]]; then
-		local ddpath="/etc/datadog-agent/conf.d/nginx.d/conf.yaml"
-	elif [[ $1 == "fpm" ]]; then
-		local ddpath="/etc/datadog-agent/conf.d/php_fpm.d/conf.yaml"
-	elif [[ $1 == "mysql" ]]; then
-		local ddpath="/etc/datadog-agent/conf.d/mysql.d/conf.yaml"
-	elif [[ $1 == "redis" ]]; then
-		local ddpath="/etc/datadog-agent/conf.d/redisdb.d/conf.yaml"
-	elif [[ $1 == "global" ]]; then
-		[[ -f /etc/datadog-agent/datadog.yaml && -n $(grep -F "WebinolyLogsStart" /etc/datadog-agent/datadog.yaml) ]] && local global="true"
-	else
-		local ddpath=""
-	fi
-	
-	[[ -n $global || ( -n $ddpath && -f $ddpath && -n $(grep -F "WebinolyDatadogLogsStart" $ddpath)) ]] && echo "true" || echo "false"
-}
-
-
 is_log() {
 	[[ -f /etc/nginx/sites-available/$1 && -n $(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$1 | grep -F "nginx/$1.access.log ") ]] && echo "true" || echo "false"
 }
@@ -1278,26 +1258,31 @@ escaped_string() {
 site_type() {
 	if [[ -z $1 ]]; then
 		echo "false"
-	elif [[ $(is_parked $1) == "true" ]]; then
+	
+	# These type of sites are not supported in subfolders...
+	elif [[ -z $2 && $(is_parked $1) == "true" ]]; then
 		echo "Parked"
-	elif [[ $(is_wp $1) == "true" ]]; then
-		echo "WordPress"
-	elif [[ $(is_php $1) == "true" ]]; then
-		echo "PHP"
-	elif [[ $(is_html $1) == "true" ]]; then
-		echo "HTML"
-	elif [[ $(is_dedicated_proxy_domain $1) == "true" ]]; then
-		echo "Dedicated Reverse Proxy"
-	elif [[ $(is_proxy $1) == "true" ]]; then
-		echo "Reverse Proxy"
-	elif [[ $(is_forward $1) == "true" ]]; then
+	elif [[ -z $2 && $(is_forward $1) == "true" ]]; then
 		echo "Forward"
-	elif [[ $(is_empty_root_site $1) == "full" ]]; then
+	elif [[ -z $2 && $(is_empty_root_site $1) == "full" ]]; then
 		echo "Empty Blank"
-	elif [[ $(is_empty_root_site $1) == "subfolders" ]]; then
+	elif [[ -z $2 && $(is_empty_root_site $1) == "subfolders" ]]; then
 		echo "Subfolders"
-	elif [[ $(is_empty_root_site $1) == "true" ]]; then
+	elif [[ -z $2 && $(is_empty_root_site $1) == "true" ]]; then
 		echo "Empty"
+
+	# Subfolder supported...
+	elif [[ $(is_wp $1 $2) == "true" ]]; then
+		echo "WordPress"
+	elif [[ $(is_php $1 $2) == "true" ]]; then
+		echo "PHP"
+	elif [[ $(is_html $1 $2) == "true" ]]; then
+		echo "HTML"
+	elif [[ $(is_dedicated_proxy_domain $1 $2) == "true" ]]; then
+		echo "Dedicated Reverse Proxy"
+	elif [[ $(is_proxy $1 $2) == "true" ]]; then
+		echo "Reverse Proxy"
+	
 	else
 		echo "Unknown"
 	fi
@@ -1640,6 +1625,10 @@ check_var() {
 	# PHP Fopen Wrappers
 	elif [[ $1 == "php-allow-url-fopen" ]]; then
 		[[ $(conf_read php-allow-url-fopen) == "true" ]] && local out="On" || local out="Off"
+		
+	# PHP Sessions Cookie Samesite
+	elif [[ $1 == "php-session-cookie-samesite" ]]; then
+		[[ $(conf_read php-session-cookie-samesite) =~ ^(Lax|Strict)$ ]] && local out=$(conf_read php-session-cookie-samesite) || local out="Lax"
 	
 	# Redis Memory
 	elif [[ $1 == "redis-max-mem" ]]; then
@@ -1649,9 +1638,9 @@ check_var() {
 	elif [[ $1 == "max-mb-uploads" ]]; then
 		[[ -n $(conf_read max-mb-uploads) && $(conf_read max-mb-uploads) =~ ^[0-9]+$ && $(conf_read max-mb-uploads) -gt 0 ]] && local out=$(conf_read max-mb-uploads) || local out=100	
 	
-	# FastCGI Cache size
+	# FastCGI Cache size (/run folder)
 	elif [[ $1 == "run-folder-size" ]]; then
-		[[ -n $(conf_read run-folder-size) && $(conf_read run-folder-size) =~ ^[0-9]+$ && $(conf_read run-folder-size) -gt 10 && $(conf_read run-folder-size) -le "70" ]] && local out=$(conf_read run-folder-size) || local out=25
+		[[ -n $(conf_read run-folder-size) && $(conf_read run-folder-size) =~ ^[0-9]+$ && $(conf_read run-folder-size) -gt 10 && $(conf_read run-folder-size) -le "70" ]] && local out=$(conf_read run-folder-size) || local out=""
 	
 	# FastCGI Cache: Query Strings
 	elif [[ $1 == "wpcache-query-strings" ]]; then
@@ -1672,7 +1661,7 @@ check_var() {
 	# Locations: Deny Extensions
 	elif [[ $1 == "locations-deny-extensions" ]]; then
 		if [[ -z $(conf_read locations-deny-extensions) ]]; then
-			local out="7z|ai|asc|asp|aspx|ba|bak|bash|bat|bin|bz2|c|cco|cfg|cgi|class|com|conf|cpp|crt|cs|dat|db|dbf|deb|der|dll|dmg|dmp|dump|ear|eps|exe|git|gz|h|hg|hqx|img|ini|iso|jad|jar|jardiff|jnlp|jsp|kar|kml|kmz|log|m3u8|mdb|mml|msi|msm|msp|odp|ods|odt|old|orig|original|out|pdb|pem|php#|php_bak|php~|pkg|pl|pm|ppk|prc|ps|py|rar|rdf|rpm|run|save|sea|sh|sit|sql|srv|svn|swo|swp|sys|tar|taz|tcl|tgz|tk|tmp|tpl|tsl|tz|vb|yml|war|wsf|xspf|z|zip"
+			local out="7z|ai|alfa|asc|asp|aspx|ba|backup|bak|bash|bat|bin|bkp|bz2|c|cco|cfg|cgi|class|com|conf|cpp|crt|cs|dat|db|dbf|deb|der|dll|dmg|dmp|dump|ear|env|eps|exe|git|gz|h|hg|hqx|img|ini|iso|jad|jar|jardiff|jnlp|jsp|kar|kml|kmz|log|m3u8|mdb|mml|msi|msm|msp|odp|ods|odt|old|orig|original|out|pdb|pem|phar|php#|php_bak|php~|pkg|pl|pm|ppk|prc|ps|py|rar|rdf|rpm|run|save|sea|sh|sit|sql|srv|suspected|svn|swo|swp|sys|tar|taz|tcl|tgz|tk|tmp|tpl|tsl|tz|vb|yml|war|wsf|xspf|z|zip"
 		else
 			local out=$(conf_read locations-deny-extensions)
 		fi
@@ -1718,6 +1707,10 @@ check_var() {
 		[[ $(conf_read nginx-log-format) == "extended" ]] && local out="we_log_ext"
 		[[ $(conf_read nginx-log-format) == "custom" ]] && local out="we_log_custom"
 		
+	# MySQL 
+	elif [[ $1 == "mysql-log-binary-expire" ]]; then
+		[[ -n $(conf_read mysql-log-binary-expire) && $(conf_read mysql-log-binary-expire) =~ ^[0-9]+$ && $(conf_read mysql-log-binary-expire) -le 8553600 ]] && local out=$(conf_read mysql-log-binary-expire) || local out=864000
+	
 	else
 		local out="false"
 	fi

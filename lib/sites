@@ -194,7 +194,7 @@ wpinstall() {
 			if [[ $setupmysql == [yY] ]]; then
 				echo "${blu}"
 				
-				if [[ $dbhost != "localhost" && ( $type == [135] && ( -z $dburoot || -z $dbproot )) ]]; then
+				if [[ $dbhost != "localhost" && ( $type == [0135] && ( -z $dburoot || -z $dbproot )) ]]; then
 					# Don't ask for password if already in file!
 					if [[ $(check_mysql_connection $dburl $dbport any -login-file -master-admin) != "true" ]]; then
 						read -p "${blu}External DB Master Username: ${end}" dburoot
@@ -484,7 +484,7 @@ _EOF_
 	fi
 	
 	# Display data just to confirm the DB creation.
-	if [[ $type == [45] && $db_error_flag != "true" ]]; then
+	if [[ $type == [045] && $db_error_flag != "true" ]]; then
 		echo "${blu}"
 		echo "Database Host: $dbhost"
 		echo "Database Name: $dbname"
@@ -715,8 +715,9 @@ deletesite_subfolder() {
 
 delete_all_sites() {
 	echo "${red}"
-	echo "All your sites files will be removed."
-	echo "This action will only delete Databases attached to a WordPress site, any other Database will not be deleted. ${end}"
+	echo "${bol}All site files will be deleted.${end}"
+	echo "${red}Only databases linked to WordPress sites will be removed, others will remain untouched."
+	echo "${dim}* If you plan to reinstall or migrate, backing up your data is recommended. ${end}"
 	
 	if ! [[ ${delete_all,,} =~ ^(force|keep-db)$ ]]; then
 		echo "${blu}"
@@ -767,36 +768,39 @@ create_empty_site() {
 createsite() {
 	api-events_update si1
 	
-	# First check if valid TLD
-	[[ -z $tld ]] && echo "${dim}[WARNING] Domain name is not a valid TLD (Top Level Domain).${end}"
-	
 	# Check domain and then prevent reserved characters for file names.
 	is_url $domain -split
 	if [[ -n $url_scheme || -n $url_path ]]; then
 		echo "${red}[ERROR] Domain names should not contain scheme or path. ${dim}(Use example.com instead of https://example.com/path) ${end}"
 		exit 1
-	fi
-	if [[ $(is_domain $domain_name) != "true" ]]; then
+	
+	elif [[ $url_type == "ip" ]]; then
+		echo "${red}[ERROR] Please, use a regular domain name. ${dim}(example.com)${end}"
+		echo "${red}${dim}If you want to use an IP address you can create a site and then set it as default site.${end}"
+		exit 1
+		
+	elif [[ $(is_domain $domain_name) != "true" || $url_type != "true" ]]; then
 		echo "${red}[ERROR] Domain names can only contain letters, numbers or a hyphen; can not start or end with a hyphen or period or having two periods together. The maximum length of each label is 63 characters, and a full domain name can have a maximum of 253 characters.${end}"
 		exit 1
-	fi
 	
 	# Temporal check: sites with custom port not allowed, only for admin tools site.
-	if [[ -n $url_port && $domain != $ADMIN_TOOLS_SITE ]]; then
+	elif [[ -n $url_port && $domain != $ADMIN_TOOLS_SITE ]]; then
 		echo "${red}[ERROR] Sites with custom port are not allowed! ${end}"
 		exit 1
-	fi
 	
 	# Check for reserved domain names
-	if [[ $domain == "default" ]]; then
+	elif [[ $domain == "default" ]]; then
 		echo "${red}[ERROR] Domain name reserved!${end}"
 		exit 1
-	fi
 	
 	# Check for duplicate sites
-	if [[ -f /etc/nginx/sites-available/$domain ]]; then
+	elif [[ -f /etc/nginx/sites-available/$domain ]]; then
 		echo "${red}[ERROR] Can not create site${blu} $domain ${red}because already exists!${end}"
 		exit 1
+	
+	# Check if valid TLD
+	elif [[ -z $tld ]]; then
+		echo "${dim}[WARNING] Domain name is not a valid TLD (Top Level Domain).${end}"
 	fi
 	
 	sudo cp /opt/webinoly/templates/template-site-php /etc/nginx/sites-available/$domain
@@ -851,15 +855,15 @@ createsite() {
 	
 	# Check if only-error log is enabled
 	if [[ $(conf_read global-access-log-off) == "true" && $domain != $ADMIN_TOOLS_SITE ]]; then
-		sudo log $domain -only-error=on > /dev/null 2>&1
+		sudo log $domain -access-log=off > /dev/null 2>&1
 	else
-		sudo log $domain -only-error=off > /dev/null 2>&1
+		sudo log $domain -access-log=on > /dev/null 2>&1
 	fi
 
 	# Force redirection "root" is now enabled by default!
-	if [[ $subdomain != "true" && $force_redirect =~ ^(www|root|off)$ && -z $parked ]]; then
+	if [[ $subdomain != "true" && $force_redirect =~ ^(www|root|off)$ && -z $parked && -z $forward ]]; then
 		sudo site $domain -force-redirect=$force_redirect
-	elif [[ $subdomain != "true" && -z $parked ]]; then
+	elif [[ $subdomain != "true" && -z $parked && -z $forward ]]; then
 		sudo site $domain -force-redirect=root
 	fi
 
@@ -878,10 +882,11 @@ force_redirect() {
 	if ! [[ $force_redirect =~ ^(www|root|off)$ ]]; then
 		echo "${red}[ERROR] Please, enter a valid argument!${end}"
 		exit 1
-	fi
-	if [[ $subdomain == "true" ]]; then
+	elif [[ $subdomain == "true" ]]; then
 		echo "${red}[ERROR] Please, use the main/root domain, Force-Redirection should not be used in Subdomains!${end}"
 		exit 1
+	elif $(is_forward $domain) == "true" ]]; then
+		echo "${dim}[INFO] You've unlocked nonsense mode. Proceeding anyway... ${end}"
 	fi
 	
 	local rediron=$( grep -F "WebinolyWWWredirectStart" /etc/nginx/sites-available/$domain )
@@ -900,7 +905,7 @@ force_redirect() {
 			sudo sed -i "/server_name /c \	server_name www.$domain;" /etc/nginx/sites-available/$domain
 			
 			# Admin Tools!
-			sudo sed -i "/server_name /c \	server_name www.$domain;" /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
+			[[ $domain == $(conf_read tools-site) ]] && sudo sed -i "/server_name /c \	server_name www.$domain;" /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
 			
 			echo "${gre}Force-Redirection${blu} (${domain} -> www.${domain}) ${gre}has been successfully enabled!${end}"
 		;;
@@ -914,7 +919,7 @@ force_redirect() {
 			sudo sed -i "/server_name /c \	server_name $domain;" /etc/nginx/sites-available/$domain
 			
 			# Admin Tools!
-			sudo sed -i "/server_name /c \	server_name $domain;" /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
+			[[ $domain == $(conf_read tools-site) ]] && sudo sed -i "/server_name /c \	server_name $domain;" /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
 			
 			echo "${gre}Force-Redirection${blu} (www.${domain} -> ${domain}) ${gre}has been successfully enabled!${end}"
 		;;
@@ -927,8 +932,10 @@ force_redirect() {
 				sudo sed -i "/server_name /c \	$sername" /etc/nginx/sites-available/$domain
 				
 				# Admin Tools!
-				sudo sed -i '/WebinolyWWWredirectStart/,/WebinolyWWWredirectEnd/{/.*/d}' /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
-				sudo sed -i "/server_name /c \	$sername" /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
+				if [[ $domain == $(conf_read tools-site) ]]; then
+					sudo sed -i '/WebinolyWWWredirectStart/,/WebinolyWWWredirectEnd/{/.*/d}' /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
+					sudo sed -i "/server_name /c \	$sername" /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
+				fi
 				
 				echo "${gre}Force-Redirection has been successfully disabled!${end}"
 			else
@@ -942,12 +949,14 @@ force_redirect() {
 		sudo sed -i '1r /tmp/template-site-wwwredirect' /etc/nginx/sites-available/$domain
 		
 		# Admin Tools!
-		sudo sed -i "/listen 80/c \	listen $(conf_read tools-port);" /tmp/template-site-wwwredirect
-		sudo sed -i "/listen \[::\]:80/c \	listen [::]:$(conf_read tools-port);" /tmp/template-site-wwwredirect
-		[[ $force_redirect == "www" ]] && sudo sed -i "/return 301 /c \	return 301 http://www.${domain}:$(conf_read tools-port)\$request_uri;" /tmp/template-site-wwwredirect
-		[[ $force_redirect == "root" ]] && sudo sed -i "/return 301 /c \	return 301 http://${domain}:$(conf_read tools-port)\$request_uri;" /tmp/template-site-wwwredirect
-		sudo sed -i '/WebinolyWWWredirectStart/,/WebinolyWWWredirectEnd/{/.*/d}' /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
-		sudo sed -i '/Webinoly Admin-Tools NGINX CONFIGURATION/r /tmp/template-site-wwwredirect' /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
+		if [[ $domain == $(conf_read tools-site) ]]; then
+			sudo sed -i "/listen 80/c \	listen $(conf_read tools-port);" /tmp/template-site-wwwredirect
+			sudo sed -i "/listen \[::\]:80/c \	listen [::]:$(conf_read tools-port);" /tmp/template-site-wwwredirect
+			[[ $force_redirect == "www" ]] && sudo sed -i "/return 301 /c \	return 301 http://www.${domain}:$(conf_read tools-port)\$request_uri;" /tmp/template-site-wwwredirect
+			[[ $force_redirect == "root" ]] && sudo sed -i "/return 301 /c \	return 301 http://${domain}:$(conf_read tools-port)\$request_uri;" /tmp/template-site-wwwredirect
+			sudo sed -i '/WebinolyWWWredirectStart/,/WebinolyWWWredirectEnd/{/.*/d}' /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
+			sudo sed -i '/Webinoly Admin-Tools NGINX CONFIGURATION/r /tmp/template-site-wwwredirect' /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
+		fi
 		
 	elif [[ $(is_ssl $domain) == "true" && $force_redirect =~ ^(www|root)$ ]]; then
 		sudo sed -i '/listen 80/c \	listen 443 ssl;' /tmp/template-site-wwwredirect
@@ -978,13 +987,15 @@ force_redirect() {
 		sudo sed -i '/WebinolySSLredirectEnd/r /tmp/template-site-wwwredirect' /etc/nginx/sites-available/$domain
 		
 		# Admin Tools!
-		sudo sed -i "s/listen 443/listen $(conf_read tools-port)/g" /tmp/template-site-wwwredirect
-		sudo sed -i "s/listen \[::\]:443/listen [::]:$(conf_read tools-port)/g" /tmp/template-site-wwwredirect
-		[[ $force_redirect == "www" ]] && sudo sed -i "/return 301 /c \	return 301 https://www.${domain}:$(conf_read tools-port)\$request_uri;" /tmp/template-site-wwwredirect
-		[[ $force_redirect == "root" ]] && sudo sed -i "/return 301 /c \	return 301 https://${domain}:$(conf_read tools-port)\$request_uri;" /tmp/template-site-wwwredirect
-		sudo sed -i "/return 301 /i \	error_page 497  https:\/\/\$host:\$server_port\$request_uri;" /tmp/template-site-wwwredirect
-		sudo sed -i '/WebinolyWWWredirectStart/,/WebinolyWWWredirectEnd/{/.*/d}' /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
-		sudo sed -i '/WebinolyToolsEndBlackhole/r /tmp/template-site-wwwredirect' /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
+		if [[ $domain == $(conf_read tools-site) ]]; then
+			sudo sed -i "s/listen 443/listen $(conf_read tools-port)/g" /tmp/template-site-wwwredirect
+			sudo sed -i "s/listen \[::\]:443/listen [::]:$(conf_read tools-port)/g" /tmp/template-site-wwwredirect
+			[[ $force_redirect == "www" ]] && sudo sed -i "/return 301 /c \	return 301 https://www.${domain}:$(conf_read tools-port)\$request_uri;" /tmp/template-site-wwwredirect
+			[[ $force_redirect == "root" ]] && sudo sed -i "/return 301 /c \	return 301 https://${domain}:$(conf_read tools-port)\$request_uri;" /tmp/template-site-wwwredirect
+			sudo sed -i "/return 301 /i \	error_page 497  https:\/\/\$host:\$server_port\$request_uri;" /tmp/template-site-wwwredirect
+			sudo sed -i '/WebinolyWWWredirectStart/,/WebinolyWWWredirectEnd/{/.*/d}' /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
+			sudo sed -i '/WebinolyToolsEndBlackhole/r /tmp/template-site-wwwredirect' /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
+		fi
 	fi
 	
 	sudo rm /tmp/template-site-wwwredirect
@@ -1163,7 +1174,7 @@ location $sign$from {
 
 
 php_subfolder() {
-	[[ -n $wp || $(conf_read php-info) == "false" ]] && local file="php.conf" || local file="phpx.conf"
+	[[ -n $wp || $(conf_read php-info) == "true" ]] && local file="phpx.conf" || local file="php.conf"
 	
 	sudo sed -i "/# WebinolyCustom$/a \	include apps.d/$domain$subname-$file;" /etc/nginx/sites-available/$domain
 	sudo sed -i '/index /c \	index index.php index.html index.htm;' /etc/nginx/sites-available/$domain
@@ -1325,8 +1336,8 @@ parked_domain() {
 	# In case of WP cache, should be disabled in the new parked conf
 	sudo sed -i "/include common\/wpfc.conf;/c \	include common\/php.conf;" /etc/nginx/sites-available/$domain
 	sudo sed -i "/include apps.d\/${domain}-wpcache.conf;/c \	include common\/php.conf;" /etc/nginx/sites-available/$domain
-	[[ $(conf_read php-info) != "false" ]] && sudo sed -i "/include apps.d\/${domain}-phpcache.conf;/c \	include common\/phpx.conf;" /etc/nginx/sites-available/$domain
-	[[ $(conf_read php-info) == "false" ]] && sudo sed -i "/include apps.d\/${domain}-phpcache.conf;/c \	include common\/php.conf;" /etc/nginx/sites-available/$domain
+	[[ $(conf_read php-info) == "true" ]] && sudo sed -i "/include apps.d\/${domain}-phpcache.conf;/c \	include common\/phpx.conf;" /etc/nginx/sites-available/$domain
+	[[ $(conf_read php-info) != "true" ]] && sudo sed -i "/include apps.d\/${domain}-phpcache.conf;/c \	include common\/php.conf;" /etc/nginx/sites-available/$domain
 	
 	cusconl=$( grep -o "include /var/www/$domain/\*-nginx.conf;" /etc/nginx/sites-available/$domain | sed "s/$domain/$parked/" )
 	sed -i "/include \/var\/www\/$domain\/\*-nginx.conf;/c \	${cusconl}" /etc/nginx/sites-available/$domain
@@ -1375,10 +1386,12 @@ forward_domain() {
 	sudo rm -rf /var/www/$domain
 	sudo sed -i '/access_log/,/-nginx.conf;/{/.*/d}' /etc/nginx/sites-available/$domain
 	
+	[[ $http_code != 302 ]] && http_code=301
+	
 	if [[ $root == "on"  ]]; then
-		sudo sed -i "/server_name /a \	return 301 $forward;" /etc/nginx/sites-available/$domain
+		sudo sed -i "/# WebinolyNginxServerStart/,/# WebinolyNginxServerEnd/s|server_name .*|&\n\treturn $http_code $forward;|" /etc/nginx/sites-available/$domain
 	else
-		sudo sed -i "/server_name /a \	return 301 $forward\$request_uri;" /etc/nginx/sites-available/$domain
+		sudo sed -i "/# WebinolyNginxServerStart/,/# WebinolyNginxServerEnd/s|server_name .*|&\n\treturn $http_code $forward\$request_uri;|" /etc/nginx/sites-available/$domain
 	fi
 	
 	echo "${blu}Every request to${end} $domain ${blu}will be redirected to ${end}$forward"
@@ -1555,7 +1568,7 @@ wp_cache() {
 	if [[ $cache == "off" ]]; then
 		api-events_update si9
 		if [[ $(is_cache $domain $subfolder) == "custom" ]]; then
-			if [[ $(conf_read php-info) != "false" && $(is_wp $domain $subfolder) != "true" ]]; then
+			if [[ $(conf_read php-info) == "true" && $(is_wp $domain $subfolder) != "true" ]]; then
 				if [[ -z $subfolder ]]; then
 					sudo sed -i "/apps.d\/$domain$subname-.*cache.conf;/c \	include common/phpx.conf;" /etc/nginx/sites-available/$domain
 				elif [[ -n $subfolder && -f /etc/nginx/apps.d/$domain$subname-phpx.conf ]]; then
@@ -1726,7 +1739,7 @@ wp_cache() {
 				
 				echo -e "# Webinoly Custom FastCGI Cache File \n" >> /etc/nginx/apps.d/$domain$subname-${fn}.conf
 				
-				if [[ $fn == "phpcache" && $(conf_read php-info) != "false" ]]; then
+				if [[ $fn == "phpcache" && $(conf_read php-info) == "true" ]]; then
 					sudo cat /etc/nginx/common/phpx.conf >> /etc/nginx/apps.d/$domain$subname-${fn}.conf
 				else
 					sudo cat /etc/nginx/common/php.conf >> /etc/nginx/apps.d/$domain$subname-${fn}.conf

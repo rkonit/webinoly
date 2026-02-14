@@ -23,7 +23,7 @@ http_header_cache_control() {
 
 
 http_header_referrer() {
-	[[ -z $(conf_read header-referrer) ]] && local header_data="no-referrer-when-downgrade" || local header_data="$(conf_read header-referrer)"
+	[[ -z $(conf_read header-referrer) ]] && local header_data="strict-origin-when-cross-origin" || local header_data="$(conf_read header-referrer)"
 	
 	if [[ ${header_data,,} == "off" ]]; then
 		sudo sed -i '/^add_header Referrer-Policy/s/^/#/' /etc/nginx/common/headers-html.conf

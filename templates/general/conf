@@ -37,17 +37,29 @@
 #kernel-optim:true
 
 
+# Automatic Updates
+# Values: boolean (true/false)
+# Default: false
+# Note: Ubuntu (by default) will apply some updates automatically, without user interaction.
+# Note: Webinoly disables this to avoid issues from unpredictable upgrades.
+# Note: Applied only when Kernel Optimization is enabled.
+###########################
+#auto-updates:false
+
+
 # Percentage of RAM assigned to /run folder
 # Values: numeric int (10 < % < 70)
-# Default: 25
+# Default: (Not-Changed/system default)
+# Note: Applied only when Kernel Optimization is enabled.
 ###########################
-#run-folder-size:25
+#run-folder-size:15
 
 
 # Size of linux swap file
 # Values: numeric int (GB)
 # Default: <variable> (calculated based on your server resources)
 # Note: (server-reset with 'recalculate' is needed)
+# Note: Applied only when Kernel Optimization is enabled.
 ###########################
 #swap-mem:1
 
@@ -100,7 +112,7 @@
 # SFTP Access for www-data user
 # Values: boolean (true/false)
 # Default: false
-# Same as: sudo webinoly -login-www-data=on
+# Same as: sudo webinoly -sftp=on
 ###########################
 #sftp-www-data:false
 
@@ -109,7 +121,7 @@
 # Values: boolean (true/false)
 # Default: true
 # Note: This setting will be applied to new sites, or for existing sites 'access log' needs to be reenabled (same for global).
-# Same as: sudo log -only-error=on
+# Same as: sudo log -access-log=off
 ###########################
 #global-access-log-off:true
 
@@ -186,7 +198,7 @@
 # Note: Use the 'off' value to disable any of these features.
 ###########################
 #locations-deny-files:changelog|environment|example|install|installation|legalnotice|license|phpunit|readme|update|upgrade|wp-config
-#locations-deny-extensions:7z|ai|asc|asp|aspx|ba|bak|bash|bat|bin|bz2|c|cco|cfg|cgi|class|com|conf|cpp|crt|cs|dat|db|dbf|deb|der|dll|dmg|dmp|dump|ear|eps|exe|git|gz|h|hg|hqx|img|ini|iso|jad|jar|jardiff|jnlp|jsp|kar|kml|kmz|log|m3u8|mdb|mml|msi|msm|msp|odp|ods|odt|old|orig|original|out|pdb|pem|php#|php_bak|php~|pkg|pl|pm|ppk|prc|ps|py|rar|rdf|rpm|run|save|sea|sh|sit|sql|srv|svn|swo|swp|sys|tar|taz|tcl|tgz|tk|tmp|tpl|tsl|tz|vb|yml|war|wsf|xspf|z|zip
+#locations-deny-extensions:7z|ai|alfa|asc|asp|aspx|ba|backup|bak|bash|bat|bin|bkp|bz2|c|cco|cfg|cgi|class|com|conf|cpp|crt|cs|dat|db|dbf|deb|der|dll|dmg|dmp|dump|ear|env|eps|exe|git|gz|h|hg|hqx|img|ini|iso|jad|jar|jardiff|jnlp|jsp|kar|kml|kmz|log|m3u8|mdb|mml|msi|msm|msp|odp|ods|odt|old|orig|original|out|pdb|pem|phar|php#|php_bak|php~|pkg|pl|pm|ppk|prc|ps|py|rar|rdf|rpm|run|save|sea|sh|sit|sql|srv|suspected|svn|swo|swp|sys|tar|taz|tcl|tgz|tk|tmp|tpl|tsl|tz|vb|yml|war|wsf|xspf|z|zip
 #locations-deny-match:/node_modules/|composer\.json|/fixtures/|/behat/
 
 
@@ -286,10 +298,10 @@
 
 # HTTP Header: Referrer Policy
 # Values: no-referrer | no-referrer-when-downgrade | origin | origin-when-cross-origin | same-origin | strict-origin | strict-origin-when-cross-origin | unsafe-url | off
-# Default: no-referrer-when-downgrade
+# Default: strict-origin-when-cross-origin
 # Note: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy
 ###########################
-#header-referrer:no-referrer-when-downgrade
+#header-referrer:strict-origin-when-cross-origin
 
 
 # HTTP Header: X-Content-Type-Options
@@ -418,12 +430,12 @@
 
 # PHP Path_Info
 # Values: boolean (true/false)
-# Default: true
+# Default: false
 # Note: (server-reset not needed)
 # Note: It will be applied ONLY for sites created after this setting is changed.
 # Note: This setting is always 'false' for WP sites.
 ###########################
-#php-info:true
+#php-info:false
 
 
 # PHP Disable Functions
@@ -445,10 +457,14 @@
 
 # PHP Session Max Lifetime
 # Values: numeric int (seconds)
-# Default: (Not-Changed/system default)
+# Values: Lax | Strict (Samesite)
+# Default: (Lifetime - Not-Changed/system default)
+# Default: Lax (Samesite)
 # Note: https://www.php.net/manual/en/session.configuration.php
+# Note: Divisor and probability are not set here because Debian/Ubuntu has his own cron each 30min.
 #php-session-max-lifetime:1440
 #php-session-cookie-lifetime:0
+#php-session-cookie-samesite:Lax
 
 
 # Redis maximum amount of memory before eviction policies
@@ -516,10 +532,13 @@
 
 # MySQL/MariaDB Binary Log
 # Values: boolean (true/false)
+# Values: numeric int (0 to 8553600 seconds)
 # Default: false
+# Default: 864000 (10 days)
 # Note: When enabled, you can see this log in real-time using 'sudo log -mysql=binary'
 # Same as: sudo log -mysql=binary -enable
 #mysql-log-binary:false
+#mysql-log-binary-expire:864000
 
 
 # MySQL/MariaDB Slow Query Log
@@ -541,6 +560,7 @@
 # MySQL/MariaDB Public/External Access
 # Values: boolean (true/false)
 # Default: false
+# Note: A special value can also be used to set the bind parameter (*, ::, or an IPv4/6 address). Example: sudo webinoly -mysql-public-access=2.2.2.2
 # Same as: sudo webinoly -mysql-public-access=on
 #mysql-public-access:false
 

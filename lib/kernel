@@ -1,0 +1,381 @@
+#!/bin/bash
+
+# --- System facts ---
+readonly cores=$(grep -c ^processor /proc/cpuinfo)
+readonly swapm=$(($(awk '/SwapTotal/ {print $2}' /proc/meminfo)/1024))                              # MB
+readonly swap=$(($swapm/1000))                                                                      # GB
+readonly ramk=$(awk '/MemTotal/ {print $2}' /proc/meminfo)                                          # kB
+readonly ramb=$(($ramk/1000))                                                                       # MB (approx)
+[[ $(($ramb%1000)) -gt 700 ]] && readonly ram=$((($ramb/1000)+1)) || readonly ram=$(($ramb/1000))   # GB
+
+# Capacity-derived knobs
+# File descriptors per process (~3% of RAM in MB), capped at 65535
+[[ $(($ramb*30)) -lt 65535 ]] && readonly fd_per_process=65535 || readonly fd_per_process=$(($ramb*30))
+
+# somaxconn proportional to cores, capped at 65535
+[[ $(($cores*1024)) -lt 65535 ]] && readonly somax=$(($cores*1024)) || readonly somax=65535
+
+# Safety checks
+[[ $cores =~ ^[0-9]+$ ]] || echo "${red}[ERROR] System info (cores) corrupted!${end}"
+[[ $swapm =~ ^[0-9]+$ ]] || echo "${red}[ERROR] System info (swap) corrupted!${end}"
+[[ $ramk =~ ^[0-9]+$ ]] || echo "${red}[ERROR] System info (ram) corrupted!${end}"
+
+# MySQL validation (prefer MariaDB for low RAM and ARM)
+if [[ $(conf_read db-engine) == "mysql" && $ram -lt 1 ]]; then
+    echo "${red}[ERROR] MySQL set as database engine!${dim} (Not enough RAM: ${ramb}MB)"
+    echo "Consider MariaDB instead for servers under 2GB.${end}"
+    exit 1
+elif [[ $(conf_read db-engine) == "mysql" && $(cpu_arch) == "ARM" ]]; then
+    echo "${red}[ERROR] MySQL set as database engine!${dim} (ARM not supported by MySQL)${end}"
+    echo "${red}Consider MariaDB instead for ARM servers.${end}"
+    exit 1
+fi
+
+
+linux_optim() {
+    api-events_update ic1
+	conf_write server-version $svr_version
+    [[ $(conf_read linux-optim) == "true" || $(conf_read kernel-optim) == "false" ]] && return
+    echo "${gre}Optimizing Ubuntu kernel for LEMP workloads...${end}"
+    api-events_update ic2
+
+    # Build sysctl config entirely here (no external template)
+    [[ -f /etc/sysctl.d/90-webinoly.conf ]] && sudo rm -f /etc/sysctl.d/90-webinoly.conf
+
+    # Enable modern congestion control (safe no-op if unsupported)
+    sudo modprobe tcp_bbr 2>/dev/null || true
+
+    # Memory tuning by RAM tier
+    if [[ $ram -gt 28 ]]; then
+        swappiness=1
+        min_free_kbytes=$(($ramb*20))         # ~2% of RAM in MB (value in kB expected by kernel)
+        dirty_ratio=5                         # Good for modern HVMe disks, it can cause overhead issues with old HDD...
+        dirty_bg_ratio=2
+		vfs_cache_pressure=100
+    elif [[ $ram -gt 2 ]]; then
+        swappiness=5
+        min_free_kbytes=$(($ramb*30))         # ~3% of RAM
+        dirty_ratio=10
+        dirty_bg_ratio=5
+		vfs_cache_pressure=100
+    elif [[ $ram -gt 1 ]]; then
+        swappiness=10
+        min_free_kbytes=65535                  # ~64MB
+        dirty_ratio=15
+        dirty_bg_ratio=5
+		vfs_cache_pressure=200
+	else
+        swappiness=20
+        min_free_kbytes=16384                  # ~16MB default safety
+        dirty_ratio=15
+        dirty_bg_ratio=5
+		vfs_cache_pressure=200
+    fi
+
+    # Shared memory (generic correction; not DB2 IPC). shmmax ~70% RAM; shmall = shmmax/pagesize
+    pagesize=$(getconf PAGE_SIZE)
+    [[ $ram -gt 1 ]] && shmmax=$(($ram*1024*1024*1024*70/100)) || shmmax=268435456
+    shmall=$(($shmmax/$pagesize))
+
+    # SysV IPC — scale safely by RAM and cap at 32768 (kept for broad compatibility)
+    if [[ $ram -gt 1 ]]; then
+        shmmni=$(($ram*256))
+        msgmni=$(($ram*1024))
+    else
+        shmmni=256
+        msgmni=1024
+    fi
+    [[ $shmmni -gt 32768 ]] && shmmni=32768
+    [[ $msgmni -gt 32768 ]] && msgmni=32768
+
+    # Networking backlogs and buffers (safe, LEMP-friendly)
+    netdev_max_backlog=$((8192 + (cores*2048)))
+    tcp_max_syn_backlog=$((4096 + (cores *1024)))
+    
+	if [[ $ram -gt 12 ]]; then
+		rmem_max=33554432      # 32MB
+		wmem_max=33554432
+		[[ $ram -gt 32 ]] && vm_max_map_count=1048576 || vm_max_map_count=524288
+	elif [[ $ram -gt 2 ]]; then
+		rmem_max=16777216      # 16MB
+		wmem_max=16777216
+		vm_max_map_count=524288
+	elif [[ $ram -gt 1 ]]; then
+		rmem_max=8388608       # 8MB
+		wmem_max=8388608
+		vm_max_map_count=262144
+	else
+        rmem_max=4194304       # 4MB
+        wmem_max=4194304
+        vm_max_map_count=262144
+	fi
+
+	#### IMPORTANT: The next 4 values, never less than 1M and 256k (kernel_pid_max)
+	#### It can break your server after reboot/stop...
+	
+	# Cloud Philosophy: The only real limit should be physical RAM.
+	# We set high static values to avoid artificial "paper ceilings".
+	# Legacy practice of calculating limits based on RAM is obsolete and risky.
+	# Security Note: In a fork-bomb scenario, we rely on the OOM Killer to intervene 
+	# rather than hitting an arbitrary file descriptor limit.
+	# fs.file-max = 9223372036854775807
+	# fs.nr_open = 2147483584
+	# fs.aio-max-nr = 18446744073709551615
+	# kernel.pid_max = 4194304
+	
+    # System-wide file max (scaled; avoid absurd maxima)
+    [[ $ram -gt 2 ]] && fs_file_max=$((($ram * 1024 * 1024) / 2 )) || fs_file_max=1048576
+	[[ $fd_per_process -gt 1048576 ]] && fs_nr_open=$(($fd_per_process + 100000)) || fs_nr_open=1048576
+	
+	# Huge databases can take advantage of AIO
+	[[ $cores -gt 2 && $ram -gt 8 ]] && fs_aio_max_nr=4194304 || fs_aio_max_nr=1048576
+	
+	# Max processes capped to 4M
+	[[ $cores -gt 1 && $ram -gt 3 ]] && kernel_pid_max=4194304 || kernel_pid_max=1048576
+	
+
+    # Compose sysctl file
+    sudo tee /etc/sysctl.d/90-webinoly.conf >/dev/null <<EOF
+# Webinoly LEMP kernel optimization (auto-generated)
+#####################################################################################################
+# Please, DO NOT MODIFY this file, all the changes will be lost.                                    #
+# If you need to add/modify any of the existing rules, here: /etc/sysctl.conf                       #
+# NOTE: This file is automatically adjusted/optimized by Webinoly according to your server specs.   #
+# Please, read the documentation: https://webinoly.com/documentation/                               #
+#####################################################################################################
+
+#######################
+### GENERAL OPTIONS ###
+#######################
+fs.file-max = ${fs_file_max}
+fs.nr_open = ${fs_nr_open}
+fs.aio-max-nr = ${fs_aio_max_nr}
+kernel.pid_max = ${kernel_pid_max}
+
+# SysV IPC (safe, capped)
+kernel.msgmni = ${msgmni}
+kernel.msgmax = 65535
+kernel.msgmnb = 65535
+kernel.shmmni = ${shmmni}
+
+#########################
+### MEMORY MANAGEMENT ###
+#########################
+vm.swappiness = ${swappiness}
+vm.dirty_ratio = ${dirty_ratio}
+vm.dirty_background_ratio = ${dirty_bg_ratio}
+vm.dirty_expire_centisecs = 1400
+vm.min_free_kbytes = ${min_free_kbytes}
+vm.zone_reclaim_mode = 0
+vm.vfs_cache_pressure = ${vfs_cache_pressure}
+vm.max_map_count = ${vm_max_map_count}
+kernel.shmmax = ${shmmax}
+kernel.shmall = ${shmall}
+
+###########################
+### NETWORK PERFORMANCE ###
+###########################
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_notsent_lowat = 16384
+
+# Backlogs and queues
+net.core.somaxconn = ${somax}
+net.core.netdev_max_backlog = ${netdev_max_backlog}
+net.ipv4.tcp_max_syn_backlog = ${tcp_max_syn_backlog}
+
+# Socket buffers
+net.core.rmem_max = ${rmem_max}
+net.core.wmem_max = ${wmem_max}
+
+# Safe defaults
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_timestamps = 1
+net.ipv4.tcp_sack = 1
+net.ipv4.tcp_ecn = 0
+net.ipv4.tcp_mtu_probing = 1
+
+# Ports and keepalive
+net.ipv4.ip_local_port_range = 1024 65000
+net.ipv4.tcp_keepalive_time = 300
+net.ipv4.tcp_keepalive_intvl = 30
+net.ipv4.tcp_keepalive_probes = 10
+EOF
+
+    
+	# Apply
+    sudo sysctl -p -q /etc/sysctl.d/90-webinoly.conf
+    api-events_update ic3
+    
+
+    # Limits: file descriptors
+    [[ -n $(ulimit -Hn) && $fd_per_process -lt $(ulimit -Hn) ]] && rootfd=$(ulimit -Hn) || rootfd=$fd_per_process
+
+    # Idempotent block in limits.conf
+    sudo sed -i "/# WebinolyStart/,+6d" /etc/security/limits.conf
+    sudo tee -a /etc/security/limits.conf >/dev/null <<EOF
+# WebinolyStart - Don't delete
+root    -   nofile  ${rootfd}
+*       -   nofile  ${fd_per_process}
+mysql   soft    nofile  ${fd_per_process}
+mysql   hard    nofile  ${fd_per_process}
+# WebinolyEnd
+EOF
+
+
+    # Disable Transparent Huge Pages
+    if [[ ! -f /etc/systemd/system/webinoly-disable-thp.service ]]; then
+        sudo tee /etc/systemd/system/webinoly-disable-thp.service >/dev/null <<'EOF'
+[Unit]
+Description=Disable Transparent Huge Pages (THP)
+
+[Service]
+Type=simple
+ExecStart=/bin/sh -c "echo never > /sys/kernel/mm/transparent_hugepage/enabled && echo never > /sys/kernel/mm/transparent_hugepage/defrag"
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    fi
+    sudo systemctl start webinoly-disable-thp >/dev/null 2>&1
+    sudo systemctl enable webinoly-disable-thp >/dev/null 2>&1
+
+    # Increase /run tmpfs size (disabled by default)
+	if [[ -n $(check_var run-folder-size) ]]; then
+		echo "tmpfs   /run    tmpfs   nodev,nosuid,size=$(check_var run-folder-size)%,mode=755   0   0" | sudo tee -a /etc/fstab >/dev/null
+		sudo mount -o remount tmpfs >/dev/null 2>&1
+	fi
+	
+	# Ubuntu Automatic Updates - disabled by default: https://documentation.ubuntu.com/server/how-to/software/automatic-updates/
+	if [[ $(conf_read auto-updates) != "true" && -f /etc/apt/apt.conf.d/20auto-upgrades ]]; then
+		sudo sed -i -e 's/^\(APT::Periodic::Update-Package-Lists\).*/\1 "0";/' -e 's/^\(APT::Periodic::Unattended-Upgrade\).*/\1 "0";/' /etc/apt/apt.conf.d/20auto-upgrades
+	fi
+	
+    swap_create
+    [[ -n $(conf_read timezone) ]] && set_timezone
+
+	init_nginx
+	init_php
+	init_mysql
+
+	sudo systemctl daemon-reload
+
+    conf_write linux-optim true
+    api-events_update ic6
+}
+
+
+
+linux_purge() {
+    if [[ $(conf_read linux-optim) == "true" ]]; then
+        api-events_update pn7
+
+        # Remove sysctl tuning file
+        sudo rm -rf /etc/sysctl.d/90-webinoly.conf
+
+        # Clean limits.conf block
+        sudo sed -i '/WebinolyStart/,/WebinolyEnd/{/.*/d}' /etc/security/limits.conf
+
+        # Reload kernel defaults
+        sudo service procps force-reload
+
+        # Remove tmpfs override for /run
+        sudo sed -i '/\/run/d' /etc/fstab
+        sudo mount -o remount tmpfs > /dev/null 2>&1
+
+        # Remove THP disable service
+        if [[ -f /etc/systemd/system/webinoly-disable-thp.service ]]; then
+            sudo systemctl stop webinoly-disable-thp
+            sudo systemctl disable webinoly-disable-thp > /dev/null 2>&1
+            sudo rm /etc/systemd/system/webinoly-disable-thp.service
+        fi
+		
+		# Ubuntu Automatic Updates
+		if [[ -f /etc/apt/apt.conf.d/20auto-upgrades ]]; then
+			sudo sed -i -e 's/^\(APT::Periodic::Update-Package-Lists\).*/\1 "1";/' -e 's/^\(APT::Periodic::Unattended-Upgrade\).*/\1 "1";/' /etc/apt/apt.conf.d/20auto-upgrades
+		fi
+
+        # Remove swap if recalculation flag is set
+        [[ $recalculate == "on" ]] && swap_delete
+
+		init_nginx purge
+		init_php purge
+		init_mysql purge
+
+		# Reload systemd to pick up removals
+        sudo systemctl daemon-reload
+
+        # Mark purge complete
+        conf_write linux-optim purged
+        api-events_update pn8
+    fi
+}
+
+
+init_nginx() {
+    # Remove NGINX overrides
+    sudo rm -rf /etc/systemd/system/nginx.service.d
+
+	[[ $(conf_read nginx) != "true" || $(conf_read kernel-optim) == "false" || $1 == "purge" ]] && return
+
+    # NGINX systemd override
+    [[ ! -d /etc/systemd/system/nginx.service.d ]] && sudo mkdir -p /etc/systemd/system/nginx.service.d
+    sudo tee /etc/systemd/system/nginx.service.d/nofile_limit.conf >/dev/null <<EOF
+[Service]
+LimitNOFILE=${fd_per_process}
+EOF
+
+	sudo systemctl daemon-reload
+	sudo systemctl restart nginx
+}
+
+init_php() {
+    # Remove PHP-FPM overrides (all versions)
+    sudo rm -rf /etc/systemd/system/php*-fpm.service.d
+	
+	[[ $(conf_read php) != "true" || $(conf_read kernel-optim) == "false" || $1 == "purge" ]] && return
+
+    # PHP-FPM systemd overrides (handle multiple versions)
+    for svc in $(systemctl list-unit-files | awk '/php.*fpm\.service/ {print $1}'); do
+        dir="/etc/systemd/system/${svc}.d"
+        [[ ! -d "$dir" ]] && sudo mkdir -p "$dir"
+        sudo tee "$dir/nofile_limit.conf" >/dev/null <<EOF
+[Service]
+LimitNOFILE=${fd_per_process}
+EOF
+    done
+	
+	sudo systemctl daemon-reload
+	
+	for svc in $(systemctl list-units --type=service | awk '/php.*fpm\.service/ {print $1}'); do
+        sudo systemctl restart "$svc"
+    done
+}
+
+init_mysql() {
+    # Remove MariaDB/MySQL overrides
+    sudo rm -rf /etc/systemd/system/mariadb.service.d
+    sudo rm -rf /etc/systemd/system/mysql.service.d
+
+	[[ $(conf_read mysql) != "true" || $(conf_read kernel-optim) == "false" || $1 == "purge" ]] && return
+
+    # MariaDB/MySQL: raise NOFILE and AIO headroom via systemd if present
+    for svc in mariadb.service mysql.service; do
+        if systemctl list-unit-files | grep -q "^${svc}"; then
+            dir="/etc/systemd/system/${svc}.d"
+            [[ ! -d "$dir" ]] && sudo mkdir -p "$dir"
+            sudo tee "$dir/limits.conf" >/dev/null <<EOF
+[Service]
+LimitNOFILE=${fd_per_process}
+LimitNPROC=65535
+LimitMEMLOCK=infinity
+EOF
+        fi
+    done
+	
+	sudo systemctl daemon-reload
+	
+	for svc in mariadb.service mysql.service; do
+        systemctl list-units --type=service | grep -q "^${svc}" && sudo systemctl restart "$svc"
+    done
+}

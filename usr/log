@@ -3,7 +3,7 @@
 # View logs in real time Plugins
 # Syntax: log <domain> <option>
 # Options: -wp, -error, -mail, -php o -fpm, -mysql, -access-log, -le, -ssh, -auth, -syslog
-# Arguments: -lines, -display, -enable, -disable
+# Arguments: -lines, -display, -enable, -disable, -expire-logs, -buffer
 # Notes: If no domain or option is entered, access logs are displayed.
 
 source /opt/webinoly/lib/general
@@ -32,13 +32,12 @@ fi
 
 
 if [[ -n $purge ]]; then
+	fol=""
 	if [[ ${purge,,} =~ ^(nginx|letsencrypt|mysql|redis|force)$ ]]; then
 		answer="Y"
 		if [[ ${purge,,} =~ ^(nginx|letsencrypt|mysql|redis)$ ]]; then
 			fol="/${purge,,}"
-			mes="(${purge,,}) "
-		else
-			fol=""
+			mes="(${purge,,}) "			
 		fi
 	elif [[ ${purge,,} =~ ^(all|true)$ ]]; then
 		echo "${red}"
@@ -49,7 +48,7 @@ if [[ -n $purge ]]; then
 			echo ""
 			[[ $answer = [YyNn] ]] && break
 		done
-	else
+	elif [[ ${purge,,} != "journal" ]]; then
 		echo "${red}[ERROR] Invalid log value!${end}"
 		exit 1
 	fi
@@ -60,9 +59,14 @@ if [[ -n $purge ]]; then
 	elif [[ $answer == [Yy] ]]; then
 		sudo find /var/log${fol} -name "*.gz" -type f -delete
 		echo "${gre}All your logs ${mes}GZ files has been successfully removed from your server!${end}"
-	else
+	elif [[ ${purge,,} != "journal" ]]; then
 		echo "${red}Action aborted!${end}"
 		exit 1
+	fi
+	
+	if [[ ${purge,,} =~ ^(all|true|journal)$ ]]; then
+		sudo journalctl --vacuum-time=7d > /dev/null 2>&1
+		echo "${gre}${dim}Journal logs removed, only kept the last 7 days!${end}"
 	fi
 	
 	
@@ -175,12 +179,21 @@ elif [[ -n $mysql ]]; then
 			cnf_delete skip-log-bin
 			cnf_write log_bin /var/log/mysql/mariadb-bin
 			cnf_write log_bin_index /var/log/mysql/mariadb-bin.index
+			
+			[[ -n $expire_logs ]] && conf_write mysql-log-binary-expire $expire_logs
+			cnf_write binlog_expire_logs_seconds $(check_var mysql-log-binary-expire)
+			# Fix: Expire logs dont work in master-master replication - https://jira.mariadb.org/browse/MDEV-31404
+			cnf_write slave_connections_needed_for_purge 0
+			echo "${gre}${dim}MySQL/MariaDB Binary expire logs value was successfully set! ($(check_var mysql-log-binary-expire))${end}"
+			
 			conf_write mysql-log-binary true
 			sudo systemctl restart mysql
 			echo "${gre}MySQL/MariaDB Binary log was successfully enabled!${end}"
 		elif [[ -n $disable ]]; then
 			cnf_delete log_bin
 			cnf_delete log_bin_index
+			cnf_delete binlog_expire_logs_seconds
+			cnf_delete slave_connections_needed_for_purge
 			cnf_write skip-log-bin
 			conf_write mysql-log-binary false
 			sudo systemctl restart mysql
@@ -224,14 +237,26 @@ elif [[ -n $syslog ]]; then
 
 
 # Turn On/Off Access Logs
-elif [[ -n $access_log || -n $only_error ]]; then
-	
-	[[ -z $access_log && $only_error == "on" ]] && access_log="off"
-	[[ -z $access_log && $only_error == "off" ]] && access_log="on"
-
+elif [[ -n $access_log ]]; then
 	if ! [[ $access_log =~ ^(on|off)$ ]]; then
 		echo "${red}[ERROR] Please, enter a valid value for Access Log!${end}"
 		exit 1
+	fi
+	
+	if [[ $access_log == "on" && -n $buffer ]]; then
+		custombegin="$(echo "${buffer}" | cut -c-1)"
+		customlast="$(echo "${buffer}" | rev | cut -c-1)"
+		log_buffer="$(echo "${buffer:1:-1}" | cut -d',' -f 1 -s)"
+		log_flush="$(echo "${buffer:1:-1}" | cut -d',' -f 2 -s)"
+	
+		if [[ $custombegin == "[" && $customlast == "]" && $log_buffer =~ ^[0-9]+$ && $log_flush =~ ^[0-9]+$ && -z $(echo "${buffer:1:-1}" | cut -d',' -f 3 -s) && $log_buffer -gt 0 && $log_flush -gt 0 ]]; then
+			log_param="$(check_var nginx-log-format) buffer=${log_buffer}k flush=${log_flush}m"
+		else
+			echo "${red}[ERROR] Please, enter a valid buffer/flush value!${end}"
+			exit 1		
+		fi
+	else
+		log_param="$(check_var nginx-log-format)"
 	fi
 	
 	# Global-Conf
@@ -243,7 +268,7 @@ elif [[ -n $access_log || -n $only_error ]]; then
 			echo "${gre}Nginx Access Log was successfully disabled! ${dim}(global)${end}"
 		elif [[ $access_log == "on" ]]; then
 			api-events_update lg2
-			[[ $(conf_read nginx) == "true" ]] && sudo sed -i "/access_log /c \	access_log \/var\/log\/nginx\/access.log $(check_var nginx-log-format);" /etc/nginx/nginx.conf
+			[[ $(conf_read nginx) == "true" ]] && sudo sed -i "/access_log /c \	access_log \/var\/log\/nginx\/access.log ${log_param};" /etc/nginx/nginx.conf
 			conf_write global-access-log-off false
 			echo "${gre}Nginx Access Log was successfully enabled! ${dim}(global)${end}"
 		fi
@@ -268,7 +293,7 @@ elif [[ -n $access_log || -n $only_error ]]; then
 			echo "${gre}Nginx Access Log was successfully disabled for ${blu}${domain} ${gre}site!${end}"
 		elif [[ $access_log == "on" ]]; then
 			api-events_update lg4
-			sudo sed -i "/access_log /c \	access_log \/var\/log\/nginx\/${domain}.access.log $(check_var nginx-log-format);" /etc/nginx/sites-available/$domain
+			sudo sed -i "/access_log /c \	access_log \/var\/log\/nginx\/${domain}.access.log ${log_param};" /etc/nginx/sites-available/$domain
 			echo "${gre}Nginx Access Log was successfully enabled for ${blu}${domain} ${gre}site!${end}"
 		fi
 		
