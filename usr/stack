@@ -232,13 +232,13 @@ elif [[ -n $purge && -n $php ]]; then
 			ver=$(conf_read php-ver)
 			sudo systemctl stop php${ver}-fpm
 			
-			sudo apt -y purge php${ver}-common php${ver}-cli php${ver}-fpm php${ver}-curl php${ver}-gd php${ver}-imap php${ver}-readline php${ver}-mysql php${ver}-mbstring php${ver}-bcmath php${ver}-mysql php${ver}-zip php${ver}-xml php${ver}-soap php${ver}-imagick php${ver}-msgpack php${ver}-igbinary php${ver}-intl php-pear graphviz ghostscript
+			sudo apt -y purge php${ver}-common php${ver}-cli php${ver}-fpm php${ver}-curl php${ver}-gd php${ver}-readline php${ver}-mysql php${ver}-mbstring php${ver}-bcmath php${ver}-mysql php${ver}-zip php${ver}-xml php${ver}-soap php${ver}-imagick php${ver}-msgpack php${ver}-igbinary php${ver}-intl graphviz ghostscript
 			
 			# Starting with 8.5: Opcache extension is now always bundled in core, cannot be installed separately.
 			[[ $ver =~ ^(5.6|7.0|7.1|7.2|7.3|7.4|8.0|8.1|8.2|8.3|8.4)$ ]] && sudo apt -y purge php${ver}-opcache
 			
-			# For old packages - before ondrej split modules
-			sudo apt -y purge php-imagick php-msgpack
+			# For old packages - before ondrej split modules and obsolete packages
+			sudo apt -y purge php-imagick php-msgpack php${ver}-imap php-pear
 
 			# APT-KEY deprecated in 22.04
 			if [[ $(lsb_release -c | cut -d':' -f 2 | xargs) =~ ^(bionic|focal)$ ]]; then
