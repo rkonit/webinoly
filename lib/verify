@@ -584,24 +584,21 @@ if [[ $(conf_read php) == "true" ]]; then
 		local ver_three_err="1"
 	fi
 	
-	if [[ $(lsb_release -c | cut -d':' -f 2 | xargs) =~ ^(bionic|focal)$ ]]; then
-		if [[ ! -f /etc/apt/trusted.gpg.d/ondrej_ubuntu_php.gpg || ! -s /etc/apt/trusted.gpg.d/ondrej_ubuntu_php.gpg || -z $(cat -v /etc/apt/trusted.gpg.d/ondrej_ubuntu_php.gpg | grep -m 1 '[^[:space:]]') ]]; then
-			echo "- [ERROR] PHP Apt Key not found!"
-			local ver_three_err="1"
-		fi
-		if [[ ! -f /etc/apt/sources.list.d/ondrej-ubuntu-php-$(check_osname).list || ! -s /etc/apt/sources.list.d/ondrej-ubuntu-php-$(check_osname).list || -z $(cat -v /etc/apt/sources.list.d/ondrej-ubuntu-php-$(check_osname).list | grep -m 1 '[^[:space:]]') ]]; then
-			echo "- [ERROR] PHP PPA not found in sources list!"
-			local ver_three_err="1"
-		fi
-	else
+	if [[ $(lsb_release -c | cut -d':' -f 2 | xargs) =~ ^(jammy|noble)$ ]]; then
 		if [[ ! -f /usr/share/keyrings/php-archive-keyring.gpg || ! -s /usr/share/keyrings/php-archive-keyring.gpg || -z $(cat -v /usr/share/keyrings/php-archive-keyring.gpg | grep '[^[:space:]]') ]]; then
 			echo "- [ERROR] PHP Apt Key not found!"
 			local ver_three_err="1"
 		fi
-		if [[ ! -f /etc/apt/sources.list.d/php.list || ! -s /etc/apt/sources.list.d/php.list || -z $(cat -v /etc/apt/sources.list.d/php.list | grep -m 1 '[^[:space:]]') ]]; then
-			echo "- [ERROR] PHP PPA not found in sources list!"
+	else
+		if [[ ! -f /usr/share/keyrings/deb.sury.org-php.gpg || ! -s /usr/share/keyrings/deb.sury.org-php.gpg || -z $(cat -v /usr/share/keyrings/deb.sury.org-php.gpg | grep '[^[:space:]]') ]]; then
+			echo "- [ERROR] PHP Apt Key not found!"
 			local ver_three_err="1"
 		fi
+	fi
+	
+	if [[ ! -f /etc/apt/sources.list.d/php.list || ! -s /etc/apt/sources.list.d/php.list || -z $(cat -v /etc/apt/sources.list.d/php.list | grep -m 1 '[^[:space:]]') ]]; then
+		echo "- [ERROR] PHP PPA not found in sources list!"
+		local ver_three_err="1"
 	fi
 fi
 
