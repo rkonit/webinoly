@@ -309,6 +309,10 @@ mysql_public_access() {
 	check_for_mysql -ask
 	
 	if [[ $mysql_public_access == "on" ]]; then
+		
+		# Hidden Dynvar: if myip is found take it as bind address
+		[[ ( -z $bind || $bind == "true" ) && -n $(conf_read myip) && $(is_ip $(conf_read myip)) == "true" ]] && bind=$(conf_read myip)
+		
 		if [[ -z $bind ]]; then
 			cnf_delete bind-address
 			cnf_write skip-networking 0
