@@ -1174,7 +1174,7 @@ location $sign$from {
 
 
 php_subfolder() {
-	[[ -n $wp || $(conf_read php-info) == "true" ]] && local file="phpx.conf" || local file="php.conf"
+	[[ $(conf_read php-info) == "true" ]] && local file="phpx.conf" || local file="php.conf"
 	
 	sudo sed -i "/# WebinolyCustom$/a \	include apps.d/$domain$subname-$file;" /etc/nginx/sites-available/$domain
 	sudo sed -i '/index /c \	index index.php index.html index.htm;' /etc/nginx/sites-available/$domain
@@ -1188,7 +1188,11 @@ php_subfolder() {
 
 wp_subfolder() {
 	php_subfolder
-	sudo sed -i "/^# Not remove these comments/a include apps.d/$domain$subname-wpcommon.conf;" /etc/nginx/apps.d/$domain$subname-php.conf
+	if [[ $(conf_read php-info) == "true" ]]; then
+		sudo sed -i "/^# Not remove these comments/a include apps.d/$domain$subname-wpcommon.conf;" /etc/nginx/apps.d/$domain$subname-phpx.conf
+	else
+		sudo sed -i "/^# Not remove these comments/a include apps.d/$domain$subname-wpcommon.conf;" /etc/nginx/apps.d/$domain$subname-php.conf
+	fi
 	
 	sudo cp /etc/nginx/common/wpfc.conf /etc/nginx/apps.d/$domain$subname-wpfc.conf
 	sudo sed -i "/^location \/ {/c location $subfolder/ {" /etc/nginx/apps.d/$domain$subname-wpfc.conf
