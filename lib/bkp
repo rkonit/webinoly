@@ -396,7 +396,7 @@ export_server() {
 	#[[ -f $MYSQL_CONF_PATH/${MYSQL_CONF_PREF}-webinoly.cnf ]] && local include="$include $MYSQL_CONF_PATH/${MYSQL_CONF_PREF}-webinoly.cnf"
 	[[ -d /etc/nginx/certs ]] && local include="$include /etc/nginx/certs"
 	
-	if [[ $(conf_read exclude-other-filesystems) == "true" ]]; then
+	if [[ $EXCLUDE_OTHER_FILESYSTEMS == "true" ]]; then
 		sudo tar $exclude --one-file-system -Pcf $destination/$filename $include
 		echo "${blu}${dim}Exclude-Other-Filesystems enabled!${end}"
 	else
@@ -557,7 +557,7 @@ export_site() {
 	[[ -f /var/www/webinoly.conf_temp ]] && local include="$include /var/www/webinoly.conf_temp"
 	[[ $rp_upstream == "true" && -f /etc/nginx/conf.d/upstream_proxy.conf ]] && local include="$include /etc/nginx/conf.d/upstream_proxy.conf"
 	
-	if [[ -n $include && $(conf_read exclude-other-filesystems) == "true" ]]; then
+	if [[ -n $include && $EXCLUDE_OTHER_FILESYSTEMS == "true" ]]; then
 		sudo tar --one-file-system -Pcf $destination/$filename $include
 		echo "${blu}${dim}Exclude-Other-Filesystems enabled!${end}"
 	elif [[ -n $include ]]; then

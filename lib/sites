@@ -1860,7 +1860,7 @@ cloning_site() {
 			local dest=$( echo $subfolder | rev | cut -f 2- -d "/" -s | rev )
 			sudo mkdir -p /var/www/$domain/htdocs$dest
 			
-			if [[ $(conf_read exclude-other-filesystems) == "true" ]]; then
+			if [[ $EXCLUDE_OTHER_FILESYSTEMS == "true" ]]; then
 				sudo cp -rx /var/www/$clone_from/htdocs$subfolder /var/www/$domain/htdocs$dest
 				echo "${blu}${dim}Exclude-Other-Filesystems enabled!${end}"
 			else
@@ -1868,7 +1868,7 @@ cloning_site() {
 			fi
 		fi
 	else
-		if [[ -d /var/www/$clone_from && $(conf_read exclude-other-filesystems) == "true" ]]; then
+		if [[ -d /var/www/$clone_from && $EXCLUDE_OTHER_FILESYSTEMS == "true" ]]; then
 			sudo cp -rx /var/www/$clone_from /var/www/$domain
 			echo "${blu}${dim}Exclude-Other-Filesystems enabled!${end}"
 		elif [[ -d /var/www/$clone_from ]]; then

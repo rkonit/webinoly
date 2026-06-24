@@ -816,6 +816,10 @@ check_for_parameters() {
 		fi
 	done
 	[[ -z $@ ]] && empty_param="true"
+	
+	# CATCH VAR: Not available at the beggining of general lib...
+	# Exclude other filesystems
+	[[ -n $exclude_other_filesystems || $(conf_read exclude-other-filesystems) == "true" ]] && readonly EXCLUDE_OTHER_FILESYSTEMS="true"
 }
 
 

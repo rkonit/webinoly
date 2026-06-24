@@ -45,7 +45,7 @@ bkp_rclone() {
 		
 		local params="--progress"
 		[[ ! -t 1 ]] && local params="${params} --stats 1m"
-		[[ -n $exclude_other_filesystems ]] && local fs="--one-file-system"
+		[[ $EXCLUDE_OTHER_FILESYSTEMS == "true" ]] && local fs="--one-file-system"
 		# Not an error, --links flag is not included in TAR and ZSTD, that's why is not part of "params"
 		# Also, "fs" is not included in "params" because we need it isolated for TAR.
 		
