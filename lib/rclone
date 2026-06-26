@@ -43,7 +43,10 @@ bkp_rclone() {
 
 		[[ -z $filename ]] && local filename="webinoly_backup-$(date +%Y%m%d-%H%M)"
 		
-		local params="--progress"
+		# AWS S3 has a historical exception: in us-east-1 (Virginia) buckets must not include LocationConstraint.
+		# Using --s3-no-check-bucket avoids this issue by skipping bucket checks/creation.
+		# Users shouldn't be creating buckets here, no?
+		local params="--progress --s3-no-check-bucket"
 		[[ ! -t 1 ]] && local params="${params} --stats 1m"
 		[[ $EXCLUDE_OTHER_FILESYSTEMS == "true" ]] && local fs="--one-file-system"
 		# Not an error, --links flag is not included in TAR and ZSTD, that's why is not part of "params"
@@ -146,7 +149,9 @@ bkp_rclone() {
 				exit 1
 			fi
 			
-			local params+=(region "$region" location_constraint "$region")
+			# AWS S3 has a historical exception: in us-east-1 (Virginia) buckets must not include LocationConstraint.
+			# Using --s3-no-check-bucket avoids this issue by skipping bucket checks/creation.
+			[[ ${region,,} != "us-east-1" ]] && local params+=(region "$region" location_constraint "$region") || local params+=(region "$region")
 		fi
 		
 		rclone config create "${profile}" s3 "${params[@]}"
@@ -169,22 +174,103 @@ bkp_profile_list() {
 	echo ""
 }
 
+
 bucket_validation() {
-	local bucketname=$(echo $1 | cut -d "/" -f 1)
-	local bucketfolder=$(echo $1 | cut -d "/" -f 2- -s)
+	local bucketname=$(echo "$1" | cut -d "/" -f 1)
+	local bucketfolder=$(echo "$1" | cut -d "/" -f 2- -s)
 	
-	# Only numerals 0-9, basic Latin letters (only lowercase) and underscore.
-	# https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html
-	# Now there're a lot of rules, we cannot validate all of them, we still use the old simple rules...
-	if [[ -z $1 || -z $bucketname ]]; then
+	if [[ -z "$1" || -z "$bucketname" ]]; then
 		echo "${red}[ERROR] Please, enter a valid bucket name! ${end}"
 		exit 1
-	elif ! [[ $bucketname =~ ^[0-9a-zA-Z\.\/-]+$ ]] || [[ -z $bucketname || $(echo $bucketname | cut -c-1) =~ [-|\/] || ${#bucketname} -gt 63 || ${#bucketname} -lt 3 ]]; then
-		echo "${red}[ERROR] Bucket names can only contain lowercase letters, numbers or hyphens; must start with a letter or number and must be at least 3 and no more than 63 characters long.${end}"
+	fi
+
+	# Reference: https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html
+
+	# Only numerals 0-9, basic Latin letters, hyphens and underscores.
+	# Block illegal characters (espacios, @, %, etc.)
+	if ! [[ $bucketname =~ ^[0-9a-zA-Z._-]+$ ]]; then
+		echo "${red}[ERROR] Bucket name contains invalid characters. Only alphanumeric, dots, hyphens, and underscores are allowed.${end}"
 		exit 1
-	elif [[ -n $bucketfolder ]] && ! [[ $bucketfolder =~ ^[0-9a-zA-Z\/-_\!\.\*\'\)\(]+$ ]]; then
-		if [[ $(is_url_path /$bucketfolder) == "true" ]]; then
-			echo "${red}[WARNING] Your bucket folder name contain some characters that might require special handling!"
+	fi
+	
+	# Bucket names must not be formatted as an IP address
+	if [[ $(is_ip $bucketname) == "true" ]]; then
+		echo "${red}[ERROR] Bucket names must not be formatted as an IP address.${end}"
+		exit 1
+	fi
+
+	# Bucket names must be between 3 (min) and 63 (max) characters long. (GCP supports 222)
+	if [[ ${#bucketname} -lt 3 || ${#bucketname} -gt 222 ]]; then
+		echo "${red}[ERROR] Bucket name must be at least 3 and no more than 63 characters long. ${dim}(GCP supports 222)${end}"
+		exit 1
+	fi
+	
+	[[ -n $quiet ]] && return
+	
+	if [[ ${#bucketname} -lt 6 ]]; then
+		echo "${dim}[INFO] Bucket name is less than 6 characters. Some S3 compatible providers require a minimum of 6 characters.${end}"
+	elif [[ ${#bucketname} -gt 63 ]]; then
+		echo "${dim}[INFO] Bucket name is greater than 63 characters. It might be rejected by strict S3 providers.${end}"
+	fi
+	
+	# Capital letters (A-Z)
+	if [[ $bucketname =~ [A-Z] ]]; then
+		echo "${dim}[INFO] Uppercase letters (A-Z) detected. Supported by some S3 compatible providers, but not by standard AWS S3.${end}"
+	fi
+
+	# Underscores
+	if [[ $bucketname =~ _ ]]; then
+		echo "${dim}[INFO] Underscores (_) detected. Supported by some S3 compatible providers, but not by standard AWS S3.${end}"
+	fi
+
+	# Periods...
+	if [[ $bucketname =~ \. ]]; then
+		echo "${dim}[INFO] Dots (.) detected. It may not be supported by some S3 compatible services. For best compatibility, we recommend that you avoid using periods in bucket names, except for buckets that are used only for static website hosting. If you include periods in a bucket's name, you can't use virtual-host-style addressing over HTTPS.${end}"
+	fi
+
+	# Bucket names must not contain two adjacent periods/hyphens.
+	if [[ $bucketname =~ \.\.|\.-|-\. ]]; then
+		echo "${dim}[INFO] Consecutive dots (..) or dot-hyphen combinations (.-) might be rejected by strict S3 providers.${end}"
+	fi
+
+	# Bucket names must begin and end with a letter or number.
+	if [[ $(echo "$bucketname" | cut -c1) =~ [-._] ]] || [[ $(echo "$bucketname" | grep -c '[-._]$') -gt 0 ]]; then
+		echo "${dim}[INFO] Bucket names shouldn't start or end with a hyphen, dot, or underscore.${end}"
+	fi
+
+	# Reserved prefixes
+	if [[ $bucketname =~ ^b2- ]]; then
+		echo "${dim}[INFO] The prefix 'b2-' is reserved by Backblaze and might be rejected.${end}"
+	elif [[ $bucketname =~ ^goog ]]; then
+		echo "${dim}[INFO] The prefix 'goog' is reserved by Google Cloud Storage and might be rejected.${end}"
+	elif [[ $bucketname =~ ^xn-- ]]; then
+		echo "${dim}[INFO] The prefix 'xn--' is reserved by AWS S3 and might be rejected.${end}"
+	elif [[ $bucketname =~ ^sthree- ]]; then
+		echo "${dim}[INFO] The prefix 'sthree-' is reserved by AWS S3 and might be rejected.${end}"
+	elif [[ $bucketname =~ ^amzn-s3-demo- ]]; then
+		echo "${dim}[INFO] The prefix 'amzn-s3-demo-' is reserved by AWS S3 and might be rejected.${end}"
+	fi
+	
+	# Reserved suffix
+	if [[ $bucketname =~ -s3alias$ ]]; then
+		echo "${dim}[INFO] The suffix '-s3alias' is reserved by AWS S3 and might be rejected.${end}"
+	elif [[ $bucketname =~ --ol-s3$ ]]; then
+		echo "${dim}[INFO] The suffix '--ol-s3' is reserved by AWS S3 and might be rejected.${end}"
+	elif [[ $bucketname =~ .mrap$ ]]; then
+		echo "${dim}[INFO] The suffix '.mrap' is reserved by AWS S3 and might be rejected.${end}"
+	elif [[ $bucketname =~ --x-s3$ ]]; then
+		echo "${dim}[INFO] The suffix '--x-s3' is reserved by AWS S3 and might be rejected.${end}"
+	elif [[ $bucketname =~ --table-s3$ ]]; then
+		echo "${dim}[INFO] The suffix '--table-s3' is reserved by AWS S3 and might be rejected.${end}"
+	elif [[ $bucketname =~ -an$ ]]; then
+		echo "${dim}[INFO] The suffix '-an' is reserved by AWS S3 and might be rejected.${end}"
+	fi
+		
+
+	# Folder validation
+	if [[ -n "$bucketfolder" ]] && ! [[ "$bucketfolder" =~ ^[0-9a-zA-Z\/-_\!\.\*\'\)\(]+$ ]]; then
+		if [[ -z $quiet && $(is_url_path "/$bucketfolder") == "true" ]]; then
+			echo "${dim}[INFO] Your bucket folder name contains some characters that might require special handling!"
 			echo "More info: https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html ${end}"
 		else
 			echo "${red}[ERROR] Invalid bucket folder name.${end}"

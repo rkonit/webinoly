@@ -193,7 +193,7 @@ bkp_local_db() {
 			[[ -n $bucket ]] && sudo webinoly -backup=s3 -send-to-s3=$destination/$filename -bucket=$bucket $param
 		else
 			[[ -z $run ]] && run="true"
-			[[ -n $bucket && -n $profile ]] && sudo webinoly -backup=s3 -run=$run -source=$destination/$filename -profile=$profile -bucket=$bucket
+			[[ -n $bucket || -n $profile ]] && sudo webinoly -backup=s3 -run=$run -source=$destination/$filename -profile=$profile -bucket=$bucket
 		fi
 		
 		[[ -n $max && $max =~ ^[0-9]+$ ]] && find $destination -maxdepth 1 -type f -printf '%Ts\t%p\n' | sort -nr | cut -f2 -s | grep -v /$ | tail -n +$(($max+1)) | xargs -d '\n' -I '%' sudo rm -f % || echo "" # Never parse 'ls', use 'find' insted...
@@ -363,6 +363,8 @@ export_server() {
 		exit 1
 	fi
 	
+	echo "${blu}Exporting server... ${dim}Wait!${end}"
+	
 	# Create Temporary Files
 	sudo cp /opt/webinoly/webinoly.conf /opt/webinoly/webinoly.conf.exported
 	
@@ -415,8 +417,8 @@ export_server() {
 			[[ -n $s3_compatible_endpoint ]] && local param="-s3-compatible-endpoint=$s3_compatible_endpoint "
 			[[ -n $bucket ]] && sudo webinoly -backup=s3 -send-to-s3=$destination/$filename -bucket=$bucket $param
 		else
-			[[ -z $run ]] && run="true"
-			[[ -n $bucket && -n $profile ]] && sudo webinoly -backup=s3 -run=$run -source=$destination/$filename -profile=$profile -bucket=$bucket
+			# Run only copy, compression makes no sense here...
+			[[ -n $bucket || -n $profile ]] && sudo webinoly -backup=s3 -run -source=$destination/$filename -profile=$profile -bucket=$bucket
 		fi
 		
 		[[ -n $max && $max =~ ^[0-9]+$ ]] && find $destination -maxdepth 1 -type f -printf '%Ts\t%p\n' | sort -nr | cut -f2 -s | grep -v /$ | tail -n +$(($max+1)) | xargs -d '\n' -I '%' sudo rm -f % || echo "" # Never parse 'ls', use 'find' insted...
@@ -444,6 +446,8 @@ export_site() {
 	elif [[ -f /etc/nginx/sites-available/$export && -n $subfolder && ! -d /var/www/$export/htdocs$subfolder  ]]; then
 		echo "${red}[ERROR] Subfolder not found!${end}"
 		exit 1
+	else
+		echo "${blu}Exporting site... ${dim}Wait!${end}"
 	fi
 	
 	[[ -n $subfolder ]] && local subn=$(echo $subfolder | sed "s/\//_/g")
@@ -576,8 +580,8 @@ export_site() {
 			[[ -n $s3_compatible_endpoint ]] && local param="-s3-compatible-endpoint=$s3_compatible_endpoint "
 			[[ -n $bucket ]] && sudo webinoly -backup=s3 -send-to-s3=$destination/$filename -bucket=$bucket $param
 		else
-			[[ -z $run ]] && run="true"
-			[[ -n $bucket && -n $profile ]] && sudo webinoly -backup=s3 -run=$run -source=$destination/$filename -profile=$profile -bucket=$bucket
+			# Run only copy, compression makes no sense here...
+			[[ -n $bucket || -n $profile ]] && sudo webinoly -backup=s3 -run -source=$destination/$filename -profile=$profile -bucket=$bucket
 		fi
 		
 		[[ -n $max && $max =~ ^[0-9]+$ ]] && find $destination -maxdepth 1 -type f -printf '%Ts\t%p\n' | sort -nr | cut -f2 -s | grep -v /$ | tail -n +$(($max+1)) | xargs -d '\n' -I '%' sudo rm -f % || echo "" # Never parse 'ls', use 'find' insted...
