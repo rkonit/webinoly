@@ -48,7 +48,10 @@ bkp_rclone() {
 		# Users shouldn't be creating buckets here, no?
 		local params="--progress --s3-no-check-bucket"
 		[[ ! -t 1 ]] && local params="${params} --stats 1m"
-		[[ $EXCLUDE_OTHER_FILESYSTEMS == "true" ]] && local fs="--one-file-system"
+		if [[ $EXCLUDE_OTHER_FILESYSTEMS == "true" ]]; then
+			local fs="--one-file-system"
+			echo "${blu}${dim}Exclude-Other-Filesystems enabled!${end}"
+		fi
 		# Not an error, --links flag is not included in TAR and ZSTD, that's why is not part of "params"
 		# Also, "fs" is not included in "params" because we need it isolated for TAR.
 		
