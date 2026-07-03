@@ -838,9 +838,9 @@ set_tools_site() {
 			nginx_tool_site
 			[[ $(conf_read php) == "true" ]] && php_tool_site
 			[[ $(conf_read mysql-tool-pma) == "true" ]] && mysql_tool_pma
+			sudo chmod 644 /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
 		fi
 	
-		sudo chmod 644 /etc/nginx/sites-available/$ADMIN_TOOLS_SITE
 		echo "${gre}Admin Tools-Site has been successfully rebuilt and reset!${end}"
 		
 	elif [[ -f /etc/nginx/sites-available/$tools_site && ! -f /etc/nginx/sites-available/$ADMIN_TOOLS_SITE ]]; then
