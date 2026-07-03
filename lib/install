@@ -995,7 +995,7 @@ stack_builder() {
 		else
 			[[ -f /usr/share/keyrings/mariadb-archive-keyring.gpg && ( ! -s /usr/share/keyrings/mariadb-archive-keyring.gpg || -z $(cat -v /usr/share/keyrings/mariadb-archive-keyring.gpg | grep -m 1 '[^[:space:]]' )) ]] && sudo rm -rf /usr/share/keyrings/mariadb-archive-keyring.gpg # Prevent issues!
 			[[ ! -f /usr/share/keyrings/mariadb-archive-keyring.gpg ]] && curl -sSLf 'https://mariadb.org/mariadb_release_signing_key.asc' | sudo gpg --dearmor -o /usr/share/keyrings/mariadb-archive-keyring.gpg
-			echo "deb [signed-by=/usr/share/keyrings/mariadb-archive-keyring.gpg] https://deb.mariadb.org/$(conf_read mysql-ver)/ubuntu $(check_osname) main" | sudo tee /etc/apt/sources.list.d/mariadb.list
+			echo "deb [signed-by=/usr/share/keyrings/mariadb-archive-keyring.gpg] https://dlm.mariadb.com/repo/mariadb-server/$(conf_read mysql-ver)/repo/ubuntu $(check_osname) main" | sudo tee /etc/apt/sources.list.d/mariadb.list
 			chmod 644 /usr/share/keyrings/mariadb-archive-keyring.gpg
 		fi
 		
