@@ -206,17 +206,21 @@ smtp_setup() {
 		fi
 	fi
 	
+	# Just in case...
 	[[ ! -f /opt/webinoly/templates/source/main.cf ]] && sudo cp -p /etc/postfix/main.cf /opt/webinoly/templates/source/
+	
+	# Always start fresh... be sure!
+	sudo cat /opt/webinoly/templates/source/main.cf >| /etc/postfix/main.cf
 
 	sudo touch /etc/mailname
 	echo "$mainhost" > /etc/mailname
 	sudo chown root:root /etc/mailname
 	sudo chmod 0644 /etc/mailname
 	
-	sudo sed -i '/myorigin =/c \myorigin = /etc/mailname' /etc/postfix/main.cf
-	sudo sed -i "/myhostname =/c\myhostname = $mainhost" /etc/postfix/main.cf
-	sudo sed -i "/relayhost/c\relayhost = $host:587" /etc/postfix/main.cf
-	sudo sed -i '/mydestination =/c \mydestination = localhost' /etc/postfix/main.cf
+	sudo sed -i '/^myorigin =/c \myorigin = /etc/mailname' /etc/postfix/main.cf
+	sudo sed -i "/^myhostname =/c\myhostname = $mainhost" /etc/postfix/main.cf
+	sudo sed -i "/^relayhost/c\relayhost = $host:587" /etc/postfix/main.cf
+	sudo sed -i '/^mydestination =/c \mydestination = localhost' /etc/postfix/main.cf
 
 	# Ensure we have no duplicate parameters
 	sudo sed -i '/^smtp_tls_security_level/s/^/#/' /etc/postfix/main.cf
@@ -226,12 +230,12 @@ smtp_setup() {
 	sudo sed -i '/^smtp_sasl_security_options/s/^/#/' /etc/postfix/main.cf
 	sudo sed -i '/^smtp_sasl_auth_enable/s/^/#/' /etc/postfix/main.cf
 
-	sudo sed -i '/relayhost/a \smtp_tls_security_level = encrypt' /etc/postfix/main.cf
-	sudo sed -i '/relayhost/a \smtp_tls_note_starttls_offer = yes' /etc/postfix/main.cf
-	sudo sed -i '/relayhost/a \smtp_use_tls = yes' /etc/postfix/main.cf
-	sudo sed -i '/relayhost/a \smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd' /etc/postfix/main.cf
-	sudo sed -i '/relayhost/a \smtp_sasl_security_options = noanonymous' /etc/postfix/main.cf
-	sudo sed -i '/relayhost/a \smtp_sasl_auth_enable = yes' /etc/postfix/main.cf
+	sudo sed -i '/^relayhost/a \smtp_tls_security_level = encrypt' /etc/postfix/main.cf
+	sudo sed -i '/^relayhost/a \smtp_tls_note_starttls_offer = yes' /etc/postfix/main.cf
+	sudo sed -i '/^relayhost/a \smtp_use_tls = yes' /etc/postfix/main.cf
+	sudo sed -i '/^relayhost/a \smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd' /etc/postfix/main.cf
+	sudo sed -i '/^relayhost/a \smtp_sasl_security_options = noanonymous' /etc/postfix/main.cf
+	sudo sed -i '/^relayhost/a \smtp_sasl_auth_enable = yes' /etc/postfix/main.cf
 	
 	sudo postconf -e 'smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt'
 
