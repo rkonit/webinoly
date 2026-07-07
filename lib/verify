@@ -329,24 +329,13 @@ if [[ $(conf_read nginx) == "true" ]]; then
 		local ver_two_err="1"
 	fi
 	
-	if [[ $(lsb_release -c | cut -d':' -f 2 | xargs) =~ ^(bionic|focal)$ ]]; then
-		if [[ ! -f /etc/apt/trusted.gpg || -z $(grep -Foia "nginx signing key" /etc/apt/trusted.gpg) ]]; then
-			echo "- [ERROR] Nginx Apt Key not found!"
-			local ver_two_err="1"
-		fi
-		if [[ ! -f /etc/apt/sources.list || -z $(grep -Fo "nginx.org/packages/" /etc/apt/sources.list) ]]; then
-			echo "- [ERROR] Nginx PPA not found in sources list!"
-			local ver_two_err="1"
-		fi
-	else
-		if [[ ! -f /usr/share/keyrings/nginx-archive-keyring.gpg || ! -s /usr/share/keyrings/nginx-archive-keyring.gpg || -z $(cat -v /usr/share/keyrings/nginx-archive-keyring.gpg | grep '[^[:space:]]') ]]; then
-			echo "- [ERROR] Nginx Apt Key not found!"
-			local ver_two_err="1"
-		fi
-		if [[ ! -f /etc/apt/sources.list.d/nginx.list || ! -s /etc/apt/sources.list.d/nginx.list || -z $(cat -v /etc/apt/sources.list.d/nginx.list | grep -m 1 '[^[:space:]]') ]]; then
-			echo "- [ERROR] Nginx PPA not found in sources list!"
-			local ver_two_err="1"
-		fi
+	if [[ ! -f /usr/share/keyrings/nginx-archive-keyring.gpg || ! -s /usr/share/keyrings/nginx-archive-keyring.gpg || -z $(cat -v /usr/share/keyrings/nginx-archive-keyring.gpg | grep '[^[:space:]]') ]]; then
+		echo "- [ERROR] Nginx Apt Key not found!"
+		local ver_two_err="1"
+	fi
+	if [[ ! -f /etc/apt/sources.list.d/nginx.list || ! -s /etc/apt/sources.list.d/nginx.list || -z $(cat -v /etc/apt/sources.list.d/nginx.list | grep -m 1 '[^[:space:]]') ]]; then
+		echo "- [ERROR] Nginx PPA not found in sources list!"
+		local ver_two_err="1"
 	fi
 fi
 
@@ -769,15 +758,6 @@ if [[ $(conf_read mysql) == "true" ]]; then
 		fi
 		if [[ ! -f /etc/apt/sources.list.d/mysql.list || ! -s /etc/apt/sources.list.d/mysql.list || -z $(cat -v /etc/apt/sources.list.d/mysql.list | grep -m 1 '[^[:space:]]') ]]; then
 			echo "- [ERROR] MySQL PPA not found in sources list!"
-			local ver_four_err="1"
-		fi
-	elif [[ $(lsb_release -c | cut -d':' -f 2 | xargs) =~ ^(bionic|focal)$ ]]; then
-		if [[ ! -f /etc/apt/trusted.gpg || -z $(grep -Foia "mariadb signing key" /etc/apt/trusted.gpg) ]]; then
-			echo "- [ERROR] MariaDB Apt Key not found!"
-			local ver_four_err="1"
-		fi
-		if [[ ! -f /etc/apt/sources.list || -z $(grep -Fo "deb.mariadb.org" /etc/apt/sources.list) ]]; then
-			echo "- [ERROR] MariaDB PPA not found in sources list!"
 			local ver_four_err="1"
 		fi
 	else

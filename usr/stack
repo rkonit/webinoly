@@ -28,11 +28,6 @@ purge_mysql_client() {
 		sudo rm -rf /etc/apt/trusted.gpg.d/mysql_release_signing_key.asc # legacy!
 		sudo rm -rf /usr/share/keyrings/mysql-archive-keyring.gpg
 		sudo rm -rf /etc/apt/sources.list.d/mysql.list
-		
-	# APT-KEY deprecated in 22.04
-	elif [[ $(lsb_release -c | cut -d':' -f 2 | xargs) =~ ^(bionic|focal)$ ]]; then
-		echo | sudo add-apt-repository --remove "http://mirrors.syringanetworks.net/mariadb/repo/$(conf_read mysql-ver)/ubuntu"
-		sudo apt-key del 0xF1656F24C74CD1D8
 	else
 		sudo rm -rf /etc/apt/trusted.gpg.d/mariadb_release_signing_key.asc # legacy!
 		sudo rm -rf /usr/share/keyrings/mariadb-archive-keyring.gpg
@@ -162,18 +157,8 @@ if [[ -n $purge && ( -n $html || -n $nginx ) ]]; then
 				echo "${blu}Nginx data (including your sites) and configuration was NOT removed.${end}"
 			fi
 			
-			# APT-KEY deprecated in 22.04
-			if [[ $(lsb_release -c | cut -d':' -f 2 | xargs) =~ ^(bionic|focal)$ ]]; then
-				if [[ $(conf_read nginx-ppa) == "mainline" ]]; then
-					echo | sudo add-apt-repository --remove "deb https://nginx.org/packages/mainline/ubuntu/ $(check_osname) nginx"
-				else
-					echo | sudo add-apt-repository --remove "deb https://nginx.org/packages/ubuntu/ $(check_osname) nginx"
-				fi
-				sudo apt-key del 7BD9BF62
-			else
-				sudo rm -rf /usr/share/keyrings/nginx-archive-keyring.gpg
-				sudo rm -rf /etc/apt/sources.list.d/nginx.list
-			fi
+			sudo rm -rf /usr/share/keyrings/nginx-archive-keyring.gpg
+			sudo rm -rf /etc/apt/sources.list.d/nginx.list
 			
 			[ -L $CURRENT_HOME/www ] && sudo rm $CURRENT_HOME/www
 			[ -L $CURRENT_HOME/sites-available ] && sudo rm $CURRENT_HOME/sites-available
@@ -240,15 +225,9 @@ elif [[ -n $purge && -n $php ]]; then
 			# For old packages - before ondrej split modules and obsolete packages
 			sudo apt -y purge php-imagick php-msgpack php${ver}-imap php-pear
 
-			# APT-KEY deprecated in 22.04
-			if [[ $(lsb_release -c | cut -d':' -f 2 | xargs) =~ ^(bionic|focal)$ ]]; then
-				echo | sudo add-apt-repository --remove 'ppa:ondrej/php'
-				sudo apt-key del E5267A6C #ondrej
-			else
-				sudo rm -rf /usr/share/keyrings/php-archive-keyring.gpg
-				sudo rm -rf /usr/share/keyrings/deb.sury.org-php.gpg
-				sudo rm -rf /etc/apt/sources.list.d/php.list
-			fi
+			sudo rm -rf /usr/share/keyrings/php-archive-keyring.gpg
+			sudo rm -rf /usr/share/keyrings/deb.sury.org-php.gpg
+			sudo rm -rf /etc/apt/sources.list.d/php.list
 			
 			# Remove symlink
 			rm -f /etc/tmpfiles.d/php-fpm-link.conf
@@ -428,7 +407,7 @@ elif [[ -n $purge && -n $backups ]]; then
 					echo "${gre}${dim}Backup (duply) profiles deleted!${end}"
 				fi
 				
-				if [[ $(lsb_release -c | cut -d':' -f 2 | xargs) =~ ^(jammy|focal)$ ]]; then
+				if [[ $(lsb_release -c | cut -d':' -f 2 | xargs) == "jammy" ]]; then
 					sudo pip3 uninstall -y duplicity 2>&1 | grep -v "pip as the 'root' user"
 				else
 					sudo /opt/duplicity/bin/pip uninstall -y duplicity
@@ -521,14 +500,8 @@ elif [[ -n $purge && -n $redis ]]; then
 			# For old packages - before ondrej split modules
 			sudo apt -y purge php-redis
 			
-			# APT-KEY deprecated in 22.04
-			if [[ $(lsb_release -c | cut -d':' -f 2 | xargs) =~ ^(bionic|focal)$ ]]; then
-				echo | sudo add-apt-repository --remove 'ppa:redislabs/redis'
-				sudo apt-key del 3FA6E3CA
-			else
-				sudo rm -rf /usr/share/keyrings/redis-archive-keyring.gpg
-				sudo rm -rf /etc/apt/sources.list.d/redis.list
-			fi
+			sudo rm -rf /usr/share/keyrings/redis-archive-keyring.gpg
+			sudo rm -rf /etc/apt/sources.list.d/redis.list
 			
 			sudo systemctl restart php${ver}-fpm
 			conf_write php-tool-redis purged
