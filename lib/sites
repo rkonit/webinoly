@@ -614,14 +614,18 @@ deletesite() {
 	fi
 	
 	# Revoke SSL Cert
-	if [[ -d /etc/letsencrypt/live/$domain && -z $revoke && ${delete,,} != "force" ]]; then
-		echo "${blu}Revoke SSL Cert [Y/n]?${end}"
-		while read -r -n 1 -s revoke; do
-		  local revoke=${revoke:-y}
-		  [[ $revoke = [YyNn] ]] && break
-		done
+	if [[ $(conf_read nginx-tool-ssl) == "true" ]]; then
+		if [[ -d /etc/letsencrypt/live/$domain && -z $revoke && ${delete,,} != "force" ]]; then
+			echo "${blu}Revoke SSL Cert [Y/n]?${end}"
+			while read -r -n 1 -s revoke; do
+			  local revoke=${revoke:-y}
+			  [[ $revoke = [YyNn] ]] && break
+			done
+		fi
+		[[ $revoke =~ ^(on|y|Y)$ && -d /etc/letsencrypt/live/$domain ]] && ssl_revoke
+	elif [[ -d /etc/letsencrypt/live/$domain ]]; then
+		echo "${red}[WARNING] SSL Cert found for ${domain} but cannot take an action since Certbot is not installed or not found!${end}"
 	fi
-	[[ $revoke =~ ^(on|y|Y)$ && -d /etc/letsencrypt/live/$domain ]] && ssl_revoke
 	
 	
 	# Delete site files
