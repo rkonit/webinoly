@@ -1012,7 +1012,7 @@ is_ssl_staging() {
 	[[ -f /etc/letsencrypt/renewal/$1.conf && -n $(grep -E "^server = " /etc/letsencrypt/renewal/$1.conf | cut -d'=' -f 2 -s | grep -F "acme-staging-") ]] && echo "true" || echo "false"
 }
 is_ssl_wildcard() {
-	[[ -f /etc/letsencrypt/renewal/$1.conf && -n $(sudo certbot certificates --cert-name $1 2>/dev/null | grep -E "Domains:.* \*.$1") ]] && echo "true" || echo "false"
+	[[ -f /etc/letsencrypt/renewal/$1.conf && -n $(sudo certbot certificates --cert-name $1 2>/dev/null | grep -E "Identifiers:.* \*.$1") ]] && echo "true" || echo "false"
 }
 
 
