@@ -905,9 +905,11 @@ stack_builder() {
 		[[ $nginx =~ ^(stable|mainline)$ ]] && conf_write nginx-ppa $nginx
 		[[ $lemp =~ ^(stable|mainline)$ ]] && conf_write nginx-ppa $lemp
 		
-		[[ -f /usr/share/keyrings/nginx-archive-keyring.gpg && ( ! -s /usr/share/keyrings/nginx-archive-keyring.gpg || -z $(cat -v /usr/share/keyrings/nginx-archive-keyring.gpg | grep -m 1 '[^[:space:]]')) ]] && sudo rm -rf /usr/share/keyrings/nginx-archive-keyring.gpg # Prevent issues!
-		[[ ! -f /usr/share/keyrings/nginx-archive-keyring.gpg ]] && curl -sSLf https://nginx.org/keys/nginx_signing.key | sudo gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
+		rm -f /usr/share/keyrings/nginx-archive-keyring.gpg
+		curl -sSLf https://nginx.org/keys/nginx_signing.key | sudo gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
 		chmod 644 /usr/share/keyrings/nginx-archive-keyring.gpg
+		
+		# Ngix branch: stable/mainline
 		if [[ $(conf_read nginx-ppa) == "mainline" ]]; then
 			echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] https://nginx.org/packages/mainline/ubuntu/ $(lsb_release -cs) nginx" | sudo tee /etc/apt/sources.list.d/nginx.list
 		else
@@ -923,19 +925,20 @@ stack_builder() {
 	
 	if [[ $2 == "php" && $(conf_read php) != "true" ]]; then
 		if [[ $(lsb_release -c | cut -d':' -f 2 | xargs) =~ ^(jammy|noble)$ ]]; then
-			[[ -f /usr/share/keyrings/php-archive-keyring.gpg && ( ! -s /usr/share/keyrings/php-archive-keyring.gpg || -z $(cat -v /usr/share/keyrings/php-archive-keyring.gpg | grep -m 1 '[^[:space:]]')) ]] && sudo rm -rf /usr/share/keyrings/php-archive-keyring.gpg # Prevent issues!
-			[[ ! -f /usr/share/keyrings/php-archive-keyring.gpg ]] && curl -sSLf 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xB8DC7E53946656EFBCE4C1DD71DAEAAB4AD4CAB6' | sudo gpg --dearmor -o /usr/share/keyrings/php-archive-keyring.gpg
-			echo "deb [signed-by=/usr/share/keyrings/php-archive-keyring.gpg] https://ppa.launchpadcontent.net/ondrej/php/ubuntu $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/php.list
+			rm -f /usr/share/keyrings/php-archive-keyring.gpg
+			curl -sSLf 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xB8DC7E53946656EFBCE4C1DD71DAEAAB4AD4CAB6' | sudo gpg --dearmor -o /usr/share/keyrings/php-archive-keyring.gpg
 			chmod 644 /usr/share/keyrings/php-archive-keyring.gpg
+		
+			echo "deb [signed-by=/usr/share/keyrings/php-archive-keyring.gpg] https://ppa.launchpadcontent.net/ondrej/php/ubuntu $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/php.list
 		else
-			if [[ ! -f /usr/share/keyrings/deb.sury.org-php.gpg ]]; then
-				rm -f /tmp/debsuryorg-archive-keyring.deb
-				curl -sSLo /tmp/debsuryorg-archive-keyring.deb https://packages.sury.org/debsuryorg-archive-keyring.deb
-				dpkg -i /tmp/debsuryorg-archive-keyring.deb
-				echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/php.list
-				rm /tmp/debsuryorg-archive-keyring.deb
-			fi
+			rm -f /usr/share/keyrings/deb.sury.org-php.gpg
+			rm -f /tmp/debsuryorg-archive-keyring.deb # DoubleCheck!
+			curl -sSLo /tmp/debsuryorg-archive-keyring.deb https://packages.sury.org/debsuryorg-archive-keyring.deb
+			dpkg -i /tmp/debsuryorg-archive-keyring.deb
 			chmod 644 /usr/share/keyrings/deb.sury.org-php.gpg
+			
+			echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/php.list
+			rm /tmp/debsuryorg-archive-keyring.deb
 		fi
 		
 		api-events_update ikp
@@ -945,10 +948,11 @@ stack_builder() {
 		[[ $code != "run" ]] && local code=0
 	fi
 	if [[ ( $2 == "php" || $4 == "redis" ) && $(conf_read php-tool-redis) != "true" ]] && ! [[ $4 =~ ^(light|basic)$ ]]; then
-		[[ -f /usr/share/keyrings/redis-archive-keyring.gpg && ( ! -s /usr/share/keyrings/redis-archive-keyring.gpg || -z $(cat -v /usr/share/keyrings/redis-archive-keyring.gpg | grep -m 1 '[^[:space:]]')) ]] && sudo rm -rf /usr/share/keyrings/redis-archive-keyring.gpg # Prevent issues!
-		[[ ! -f /usr/share/keyrings/redis-archive-keyring.gpg ]] && curl -sSLf https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
-		echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+		rm -f /usr/share/keyrings/redis-archive-keyring.gpg # Prevent issues!
+		curl -sSLf https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
 		chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg
+		
+		echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
 		
 		api-events_update ikr
 		local code="run"
@@ -963,20 +967,21 @@ stack_builder() {
 		fi
 		
 		if [[ $(conf_read db-engine) == "mysql" ]]; then
-			[[ -f /usr/share/keyrings/mysql-archive-keyring.gpg && ( ! -s /usr/share/keyrings/mysql-archive-keyring.gpg || -z $(cat -v /usr/share/keyrings/mysql-archive-keyring.gpg | grep -m 1 '[^[:space:]]')) ]] && sudo rm -rf /usr/share/keyrings/mysql-archive-keyring.gpg # Prevent issues!
-			[[ ! -f /usr/share/keyrings/mysql-archive-keyring.gpg ]] && curl -sSLf 'https://repo.mysql.com/RPM-GPG-KEY-mysql-2025' | sudo gpg --dearmor -o /usr/share/keyrings/mysql-archive-keyring.gpg
+			rm -f /usr/share/keyrings/mysql-archive-keyring.gpg
+			curl -sSLf 'https://repo.mysql.com/RPM-GPG-KEY-mysql-2025' | sudo gpg --dearmor -o /usr/share/keyrings/mysql-archive-keyring.gpg
+			chmod 644 /usr/share/keyrings/mysql-archive-keyring.gpg
 			
 			# Stupid things that are only needed for MySQL.
 			# Be aware that they like to change names and syntax unexpectedly at anytime.
 			[[ $(conf_read mysql-ver) == "8.0" ]] && local mysql_repo_name="mysql-$(conf_read mysql-ver)" || local mysql_repo_name="mysql-$(conf_read mysql-ver)-lts"
 			
 			echo "deb [signed-by=/usr/share/keyrings/mysql-archive-keyring.gpg] http://repo.mysql.com/apt/ubuntu $(lsb_release -cs) ${mysql_repo_name}" | sudo tee /etc/apt/sources.list.d/mysql.list
-			chmod 644 /usr/share/keyrings/mysql-archive-keyring.gpg
 		else
-			[[ -f /usr/share/keyrings/mariadb-archive-keyring.gpg && ( ! -s /usr/share/keyrings/mariadb-archive-keyring.gpg || -z $(cat -v /usr/share/keyrings/mariadb-archive-keyring.gpg | grep -m 1 '[^[:space:]]' )) ]] && sudo rm -rf /usr/share/keyrings/mariadb-archive-keyring.gpg # Prevent issues!
-			[[ ! -f /usr/share/keyrings/mariadb-archive-keyring.gpg ]] && curl -sSLf 'https://mariadb.org/mariadb_release_signing_key.asc' | sudo gpg --dearmor -o /usr/share/keyrings/mariadb-archive-keyring.gpg
-			echo "deb [signed-by=/usr/share/keyrings/mariadb-archive-keyring.gpg] https://dlm.mariadb.com/repo/mariadb-server/$(conf_read mysql-ver)/repo/ubuntu $(check_osname) main" | sudo tee /etc/apt/sources.list.d/mariadb.list
+			rm -f /usr/share/keyrings/mariadb-archive-keyring.gpg
+			curl -sSLf 'https://mariadb.org/mariadb_release_signing_key.asc' | sudo gpg --dearmor -o /usr/share/keyrings/mariadb-archive-keyring.gpg
 			chmod 644 /usr/share/keyrings/mariadb-archive-keyring.gpg
+			
+			echo "deb [signed-by=/usr/share/keyrings/mariadb-archive-keyring.gpg] https://dlm.mariadb.com/repo/mariadb-server/$(conf_read mysql-ver)/repo/ubuntu $(check_osname) main" | sudo tee /etc/apt/sources.list.d/mariadb.list
 		fi
 		
 		api-events_update ikm
