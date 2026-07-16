@@ -73,6 +73,8 @@ conf_write() {
 # ***********************************************
 
 
+readonly OS_VERSION_NAME=$(lsb_release -c | cut -d':' -f 2 | xargs)
+
 # STOP and exit if not root or sudo.
 if [[ $(whoami) != "root" ]]; then
 	echo "${red}Please run this script as root or using sudo.${end}"
@@ -141,7 +143,7 @@ check_ubuntu_release() {
 	local check="false"
 	for val in "${os_ubuntu_supported[@]}"
 	do 
-		[[ $val == $(lsb_release -c | cut -d':' -f 2 | xargs) ]] && check="true"
+		[[ $val == $OS_VERSION_NAME ]] && check="true"
 	done
 	echo $check
 }
@@ -180,7 +182,7 @@ check_osname() {
 		echo "****************************************************************************" >&2
 		echo "${end}" >&2
 	else
-		echo $(lsb_release -c | cut -d':' -f 2 | xargs)
+		echo $OS_VERSION_NAME
 	fi
 }
 
@@ -1720,15 +1722,17 @@ check_var() {
 
 
 cpu_arch() {
-	local arch=$(lscpu | grep "Vendor ID:" | cut -d ":" -f 2 -s | sed 's/^[ \t]*//')
-	
-	if [[ -n $(echo $arch | grep -oi "ARM") ]]; then
-		echo "ARM"
-	elif [[ -n $(echo $arch | grep -oi "Intel") ]]; then
-		echo "Intel"
-	else
-		echo "Unknown"
-	fi
+	case "$(uname -m)" in
+		x86_64|amd64)
+			echo "amd64"
+			;;
+		aarch64|arm64)
+			echo "arm64"
+			;;
+		*)
+			echo "unknown"
+			;;
+	esac
 }
 
 

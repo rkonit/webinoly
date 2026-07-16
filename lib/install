@@ -536,7 +536,7 @@ nginx_tool_ssl() {
 	api-events_update in5
 
 	# Starting with Ubuntu 26.04 we will not use or install Snap by default (we only use it for Certbot)
-	[[ $(lsb_release -c | cut -d':' -f 2 | xargs) =~ ^(jammy|noble)$ ]] || conf_write snap false
+	[[ $OS_VERSION_NAME =~ ^(jammy|noble)$ ]] || conf_write snap false
 
 	# Install LetsEncrypt
 	if [[ $(conf_read snap) == "false" ]];  then
@@ -584,7 +584,7 @@ nginx_tool_ssl() {
 nginx_tool_bkp() {	
 	api-events_update in7
 	
-	[[ $(uname -m) =~ (aarch64|arm64) ]] && local arch="arm64" || local arch="amd64"
+	[[ $(cpu_arch) == "arm64" ]] && local arch="arm64" || local arch="amd64"
 
 	tmp_dir=$(mktemp -d) && cd "$tmp_dir"
 	curl -OfsS "https://downloads.rclone.org/rclone-current-linux-${arch}.zip"
@@ -924,7 +924,7 @@ stack_builder() {
 	fi
 	
 	if [[ $2 == "php" && $(conf_read php) != "true" ]]; then
-		if [[ $(lsb_release -c | cut -d':' -f 2 | xargs) =~ ^(jammy|noble)$ ]]; then
+		if [[ $OS_VERSION_NAME =~ ^(jammy|noble)$ ]]; then
 			rm -f /usr/share/keyrings/php-archive-keyring.gpg
 			curl -sSLf 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xB8DC7E53946656EFBCE4C1DD71DAEAAB4AD4CAB6' | sudo gpg --dearmor -o /usr/share/keyrings/php-archive-keyring.gpg
 			chmod 644 /usr/share/keyrings/php-archive-keyring.gpg

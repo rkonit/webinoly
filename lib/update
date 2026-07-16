@@ -377,7 +377,7 @@ onenine_to_oneten() {
 	fi
 	
 	# Backups to S3 not working in 24.04
-	[[ $(conf_read nginx-tool-bkp) == "true" && $(lsb_release -c | cut -d':' -f 2 | xargs) == "noble" ]] && sudo /opt/duplicity/bin/pip install boto3
+	[[ $(conf_read nginx-tool-bkp) == "true" && $OS_VERSION_NAME == "noble" ]] && sudo /opt/duplicity/bin/pip install boto3
 }
 
 

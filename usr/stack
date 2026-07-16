@@ -407,7 +407,7 @@ elif [[ -n $purge && -n $backups ]]; then
 					echo "${gre}${dim}Backup (duply) profiles deleted!${end}"
 				fi
 				
-				if [[ $(lsb_release -c | cut -d':' -f 2 | xargs) == "jammy" ]]; then
+				if [[ $OS_VERSION_NAME == "jammy" ]]; then
 					sudo pip3 uninstall -y duplicity 2>&1 | grep -v "pip as the 'root' user"
 				else
 					sudo /opt/duplicity/bin/pip uninstall -y duplicity
@@ -688,7 +688,7 @@ elif [[ -n $mysql ]]; then
 	[[ $mysql == "client" ]] && stack_builder false false mysql-client || stack_builder false false mysql $build
 
 elif [[ -n $lemp ]]; then
-	if [[ $(conf_read db-engine) == "mysql" && $(cpu_arch) == "ARM" ]]; then
+	if [[ $(conf_read db-engine) == "mysql" && $(cpu_arch) == "arm64" ]]; then
 		echo "${red}[ERROR] ARM processors are not supported by MySQL!${end}"
 		exit 1
 	fi
