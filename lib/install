@@ -675,8 +675,8 @@ php_tool_memcached() {
 	# Memcached (Object Cache)
 	sudo apt -y install php${ver}-memcached memcached
 	
-	# Starting with 8.5: Memcache module still not available, we should consider remove it permanently.
-	[[ $ver =~ ^(5.6|7.0|7.1|7.2|7.3|7.4|8.0|8.1|8.2|8.3|8.4)$ ]] && sudo apt -y install php${ver}-memcache
+	# Memcache legacy extension removed, not installed anymore in Ubuntu 26.04 or any PHP 8.5...
+	[[ $OS_VERSION_NAME =~ ^(jammy|noble)$ && $ver =~ ^(5.6|7.0|7.1|7.2|7.3|7.4|8.0|8.1|8.2|8.3|8.4)$ ]] && sudo apt -y install php${ver}-memcache
 	
 	conf_write php-tool-memcached true
 	
