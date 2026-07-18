@@ -9,7 +9,7 @@ readonly svr_version="1.13"
 readonly os_ubuntu_supported=(jammy noble resolute) # https://ubuntu.com/about/release-cycle
 readonly php_supported=(7.4 8.0 8.1 8.2 8.3 8.4 8.5) # https://www.php.net/supported-versions.php
 readonly php_default="8.5"
-readonly mariadb_supported=(11.8 12.3) # https://mariadb.com/docs/release-notes/community-server
+readonly mariadb_supported=(11.4 11.8 12.3) # https://mariadb.com/docs/release-notes/community-server
 readonly mariadb_default="12.3"
 readonly mysql_supported=(8.4 9.7) # https://endoflife.date/mysql
 readonly mysql_default="9.7"
@@ -157,20 +157,41 @@ check_php_version() {
 }
 check_mysql_version() {
 	local check="false"
+	local -a allowed_versions=()
 	
-	# It works for both MySQL and MariaDB!
 	if [[ $(conf_read db-engine) == "mysql" ]]; then
-		for val in "${mysql_supported[@]}"
-		do 
-			[[ $val == $1 ]] && check="true"
-		done
+		allowed_versions=("${mysql_supported[@]}")
 	else
-		for val in "${mariadb_supported[@]}"
-		do 
-			[[ $val == $1 ]] && check="true"
-		done
+		case "$OS_VERSION_NAME" in
+			"${os_ubuntu_supported[0]}") # two most oldest versions only supported
+				allowed_versions=("${mariadb_supported[@]:0:2}")
+				;;
+			"${os_ubuntu_supported[1]}") # all versions supported
+				allowed_versions=("${mariadb_supported[@]}")
+				;;
+			"${os_ubuntu_supported[2]}") # the oldest mariadb version in the list is not supported
+				allowed_versions=("${mariadb_supported[@]:1}")
+				;;
+			*) # Fallback
+				allowed_versions=("${mariadb_supported[@]}")
+				;;
+		esac
 	fi
-	echo $check
+
+	# Special case: return list of supported versions.
+	if [[ $1 == "-list-supported" ]]; then
+		echo "${allowed_versions[@]}"
+		return
+	fi
+
+	for val in "${allowed_versions[@]}"; do
+		if [[ "$val" == "$1" ]]; then
+			check="true"
+			break
+		fi
+	done
+
+	echo "$check"
 }
 
 
